@@ -189,6 +189,13 @@ class NICE_SLAM():
     def grid_init(self, cfg):
         """
         Initialize the hierarchical feature grids.
+        c_dim = 32, representation encoding dimension
+        num_A_grids = number of grid cells along A axis in the map
+        Creates vectors of size (1, c_dim, num_Z_grids, num_Y_grids, num_X_grids)
+        1 each for fine, mid, coarse, color
+
+        To be replaced with mapper of di-fusion:
+        self.shared_c
 
         Args:
             cfg (dict): parsed config dict.

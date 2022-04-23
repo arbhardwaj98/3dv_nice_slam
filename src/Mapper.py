@@ -28,7 +28,7 @@ class Mapper(object):
 
         self.idx = slam.idx
         self.nice = slam.nice
-        self.c = slam.shared_c
+        self.c = slam.shared_c        # Dict to store map encodings
         self.bound = slam.bound
         self.logger = slam.logger
         self.mesher = slam.mesher
@@ -241,7 +241,7 @@ class Mapper(object):
             cur_gt_depth (tensor): gt_depth image of the current camera.
             gt_cur_c2w (tensor): groundtruth camera to world matrix corresponding to current frame.
             keyframe_dict (list): list of keyframes info dictionary.
-            keyframe_list (list): list ofkeyframe index.
+            keyframe_list (list): list of keyframe index.
             cur_c2w (tensor): the estimated camera to world matrix of current frame. 
 
         Returns:
@@ -249,7 +249,7 @@ class Mapper(object):
         """
         H, W, fx, fy, cx, cy = self.H, self.W, self.fx, self.fy, self.cx, self.cy
         device = self.device
-        c = self.c
+        c = self.c  #
         cfg = self.cfg
         bottom = torch.from_numpy(np.array([0, 0, 0, 1.]).reshape(
             [1, 4])).type(torch.float32).to(device)
@@ -424,6 +424,7 @@ class Mapper(object):
                 if self.BA:
                     optimizer.param_groups[1]['lr'] = self.BA_cam_lr
 
+            # TODO: Visualizer just passes the map 'c' to renderer, edit the renderer.
             if (not (idx == 0 and self.no_vis_on_first_frame)) and ('Demo' not in self.output):
                 self.visualizer.vis(
                     idx, joint_iter, cur_gt_depth, cur_gt_color, cur_c2w, self.c, self.decoders)
@@ -469,17 +470,20 @@ class Mapper(object):
 
             if self.nice:
                 # should pre-filter those out of bounding box depth value
+                # Does this filter out rays which lie outside our defined map size?
                 with torch.no_grad():
                     det_rays_o = batch_rays_o.clone().detach().unsqueeze(-1)  # (N, 3, 1)
                     det_rays_d = batch_rays_d.clone().detach().unsqueeze(-1)  # (N, 3, 1)
-                    t = (self.bound.unsqueeze(0).to(
-                        device) - det_rays_o) / det_rays_d
+                    t = (self.bound.unsqueeze(0).to(device) - det_rays_o) / det_rays_d
                     t, _ = torch.min(torch.max(t, dim=2)[0], dim=1)
                     inside_mask = t >= batch_gt_depth
                 batch_rays_d = batch_rays_d[inside_mask]
                 batch_rays_o = batch_rays_o[inside_mask]
                 batch_gt_depth = batch_gt_depth[inside_mask]
                 batch_gt_color = batch_gt_color[inside_mask]
+
+            # TODO: read and edit renderer function, it requires the map.
+            #  The function where the depth calculations are done. Important
             ret = self.renderer.render_batch_ray(c, self.decoders, batch_rays_d,
                                                  batch_rays_o, device, self.stage,
                                                  gt_depth=None if self.coarse_mapper else batch_gt_depth)
@@ -496,6 +500,7 @@ class Mapper(object):
             # for imap*, it use volume density
             regulation = (not self.occupancy)
             if regulation:
+                # TODO: read and edit renderer function, it requires the map.
                 point_sigma = self.renderer.regulation(
                     c, self.decoders, batch_rays_d, batch_rays_o, batch_gt_depth, device, self.stage)
                 regulation_loss = torch.abs(point_sigma).sum()
@@ -603,6 +608,8 @@ class Mapper(object):
                 self.BA = (len(self.keyframe_list) > 4) and cfg['mapping']['BA'] and (
                     not self.coarse_mapper)
 
+                # TODO: Read optimization function
+                # Map optimization function, lots of changes here
                 _ = self.optimize_map(num_joint_iters, lr_factor, idx, gt_color, gt_depth,
                                       gt_c2w, self.keyframe_dict, self.keyframe_list, cur_c2w=cur_c2w)
                 if self.BA:
@@ -634,6 +641,7 @@ class Mapper(object):
                 self.mapping_idx[0] = idx
                 self.mapping_cnt[0] += 1
 
+                # TODO: map as argument
                 if (idx % self.mesh_freq == 0) and (not (idx == 0 and self.no_mesh_on_first_frame)):
                     mesh_out_file = f'{self.output}/mesh/{idx:05d}_mesh.ply'
                     self.mesher.get_mesh(mesh_out_file, self.c, self.decoders, self.keyframe_dict,

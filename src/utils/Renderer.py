@@ -168,13 +168,17 @@ class Renderer(object):
             z_vals, _ = torch.sort(
                 torch.cat([z_vals, z_vals_surface.double()], -1), -1)
 
+        # points sampled on rays
         pts = rays_o[..., None, :] + rays_d[..., None, :] * \
             z_vals[..., :, None]  # [N_rays, N_samples+N_surface, 3]
         pointsf = pts.reshape(-1, 3)
 
+        # TODO: Check eval_points function
+        # Passes grid to decoders, check decoders.
         raw = self.eval_points(pointsf, decoders, c, stage, device)
         raw = raw.reshape(N_rays, N_samples+N_surface, -1)
 
+        # convert raw occupancy values to outputs
         depth, uncertainty, color, weights = raw2outputs_nerf_color(
             raw, z_vals, rays_d, occupancy=self.occupancy, device=device)
         if N_importance > 0:
