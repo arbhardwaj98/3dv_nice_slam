@@ -1,5 +1,4 @@
 import functools
-import threading
 from pathlib import Path
 
 import torch
@@ -7,9 +6,7 @@ import logging
 import torch.optim
 import numpy as np
 import numba
-import argparse
 import torch.multiprocessing as mp
-from pprint import pprint
 
 
 @numba.jit
@@ -39,8 +36,8 @@ class DenseIndexedMap:
         :param cfg:  config
         :param bound:  map bounds
         """
-        #mp.set_start_method('spawn', force=True)
-        mp.set_start_method('forkserver', force=True)
+        # mp.set_start_method('spawn', force=True)
+        # mp.set_start_method('forkserver', force=True)
         self.cfg = cfg
         device = cfg["mapping"]["device"]
         self.device = device
@@ -84,9 +81,8 @@ class DenseIndexedMap:
         self.backup_var_names = ["indexer", "latent_vecs", "latent_vecs_pos", "voxel_obs_count"]
         self.backup_vars = {}
         # Allow direct visit by variable
-        #self.modifying_lock = threading.Lock()
+        # self.modifying_lock = threading.Lock()
         for p in self.cold_vars.keys():
-            print(p)
             setattr(DenseIndexedMap, p, property(
                 fget=functools.partial(DenseIndexedMap._get_var, name=p),
                 fset=functools.partial(DenseIndexedMap._set_var, name=p)
@@ -180,12 +176,12 @@ class DenseIndexedMap:
         :return:
         """
         surface_xyz = surface_xyz.to(self.device)
-        #assert surface_xyz.device == self.device, \
+        # assert surface_xyz.device == self.device, \
         #    f"Device of map {self.device} and input observation " \
         #    f"{surface_xyz.device} must be the same."
 
         # This lock prevents meshing thread reading error.
-        #self.modifying_lock.acquire()
+        # self.modifying_lock.acquire()
 
         # -- 1. Allocate new voxels --
         surface_xyz_zeroed = surface_xyz - self.bound_min.unsqueeze(0)
@@ -210,7 +206,7 @@ class DenseIndexedMap:
             invalid_flatten_id = invalid_flatten_id[self.cold_vars['indexer'][invalid_flatten_id] == -1]
             self.allocate_block(invalid_flatten_id)  # Func
 
-        #self.modifying_lock.release()
+        # self.modifying_lock.release()
         return unq_mask
 
     def _expand_flatten_id(self, base_flatten_id: torch.Tensor, ensure_valid: bool = True):
