@@ -249,7 +249,7 @@ class DenseIndexedMap:
         xyz_normalized = (xyz - self.bound_min.unsqueeze(0)) / self.voxel_size
         with torch.no_grad():
             grid_id = torch.ceil(xyz_normalized.detach()).long() - 1
-            linear_id = self._linearize_id(xyz)
+            linear_id = self._linearize_id(grid_id)
             indices = self.indexer[linear_id]
             point_embeddings = self.latent_vecs[indices]
 
