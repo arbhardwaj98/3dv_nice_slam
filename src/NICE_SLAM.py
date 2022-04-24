@@ -81,10 +81,9 @@ class NICE_SLAM():
         self.mapping_cnt = torch.zeros((1)).int()  # counter for mapping
         self.mapping_cnt.share_memory_()
         for key, val in self.shared_c.items():
-            if not "dense" in key:
-                val = val.to(self.cfg['mapping']['device'])
-                val.share_memory_()
-                self.shared_c[key] = val
+            val = val.to(self.cfg['mapping']['device'])
+            val.share_memory_()
+            self.shared_c[key] = val
         self.shared_decoders = self.shared_decoders.to(
             self.cfg['mapping']['device'])
         self.shared_decoders.share_memory()
@@ -234,10 +233,9 @@ class NICE_SLAM():
         val_shape = [1, c_dim, *middle_val_shape]
         middle_val = torch.zeros(val_shape).normal_(mean=0, std=0.01)
         c[middle_key] = middle_val
-        middle_dense_key = 'dense_middle'
         middle_dense_map = DenseIndexedMap("middle", self.cfg,
                                            self.bound, list(map(int, (xyz_len / middle_grid_len).tolist())))
-        c[middle_dense_key] = middle_dense_map
+        self.middle_dense_map = middle_dense_map
 
         fine_key = 'grid_fine'
         fine_val_shape = list(map(int, (xyz_len / fine_grid_len).tolist()))

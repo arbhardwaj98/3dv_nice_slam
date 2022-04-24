@@ -29,6 +29,8 @@ class Mapper(object):
         self.idx = slam.idx
         self.nice = slam.nice
         self.c = slam.shared_c        # Dict to store map encodings
+        if not coarse_mapper:
+            self.middle_dense_map = slam.middle_dense_map
         self.bound = slam.bound
         self.logger = slam.logger
         self.mesher = slam.mesher
@@ -628,7 +630,7 @@ class Mapper(object):
                             cur_pc = get_pointcloud(
                                 self.H, self.W, self.fx, self.fy, self.cx, self.cy,
                                 cur_c2w.clone(), gt_depth, self.device)
-                            self.c["dense_middle"].integrate_keyframe(cur_pc)
+                            self.middle_dense_map.integrate_keyframe(cur_pc)
 
             if self.low_gpu_mem:
                 torch.cuda.empty_cache()
