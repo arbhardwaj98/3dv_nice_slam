@@ -312,6 +312,7 @@ class NICE_SLAM():
         for p in processes:
             p.join()
 
+        self.middle_dense_map.save('/home/ema/tanmay/3dvis/3dv_nice_slam/output/Apartment/')
 
 # This part is required by torch.multiprocessing
 if __name__ == '__main__':
