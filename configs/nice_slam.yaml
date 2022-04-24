@@ -63,6 +63,8 @@ mapping:
   frustum_feature_selection: True
   keyframe_selection_method: 'overlap'
   save_selected_keyframes_info: False
+  prune_min_vox_obs: 16
+  ignore_count_th: 16
   lr_first_factor: 5
   lr_factor: 1
   pixels: 1000

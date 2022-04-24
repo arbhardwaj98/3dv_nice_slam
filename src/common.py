@@ -270,6 +270,17 @@ def get_rays(H, W, fx, fy, cx, cy, c2w, device):
     return rays_o, rays_d
 
 
+def get_pointcloud(H, W, fx, fy, cx, cy, c2w, depth, device):
+    """
+    Get pointcloud for a whole depth image.
+
+    """
+    rays_o, rays_d = get_rays(H, W, fx, fy, cx, cy, c2w, device)
+    pc = rays_d*depth + rays_o
+
+    return pc.reshape(-1, 3)
+
+
 def normalize_3d_coordinate(p, bound):
     """
     Normalize coordinate to [-1, 1], corresponds to the bounding box given.

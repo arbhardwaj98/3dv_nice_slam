@@ -1,9 +1,7 @@
-import copy
 import functools
 import threading
 from pathlib import Path
 
-import open3d as o3d
 import torch
 import logging
 import torch.optim
@@ -22,26 +20,6 @@ def _get_valid_idx(base_idx: np.ndarray, query_idx: np.ndarray):
     return mask
 
 
-class MeshExtractCache:
-    def __init__(self, device):
-        self.vertices = None
-        self.vertices_flatten_id = None
-        self.vertices_std = None
-        self.updated_vec_id = None
-        self.device = device
-        self.clear_updated_vec()
-
-    def clear_updated_vec(self):
-        self.updated_vec_id = torch.empty((0,), device=self.device, dtype=torch.long)
-
-    def clear_all(self):
-        self.vertices = None
-        self.vertices_flatten_id = None
-        self.vertices_std = None
-        self.updated_vec_id = None
-        self.clear_updated_vec()
-
-
 class MapVisuals:
     def __init__(self):
         self.mesh = []
@@ -51,30 +29,34 @@ class MapVisuals:
 
 
 class DenseIndexedMap:
-    def __init__(self, args: argparse.Namespace, device: torch.device, latent_dim: int):
+    def __init__(self, name: str, cfg: dict, bound: torch.Tensor, shape: list):
         """
         Initialize a densely indexed latent map.
         For easy manipulation, invalid indices are -1, and occupied indices are >= 0.
 
-        :param latent_dim:  size of latent dim
-        :param device:      device type of the map (some operations can still on host)
+        :param name:  name
+        :param cfg:  config
+        :param bound:  map bounds
         """
-        mp.set_start_method('forkserver', force=True)
 
-        self.voxel_size = args.voxel_size
-        self.n_xyz = np.ceil((np.asarray(args.bound_max) - np.asarray(args.bound_min)) / args.voxel_size).astype(
-            int).tolist()
+        self.cfg = cfg
+        device = cfg["mapping"]["device"]
+        self.device = device
+        self.bound = bound
+
+        self.voxel_size = cfg["grid_len"][name]
+        self.n_xyz = shape
         logging.info(f"Map size Nx = {self.n_xyz[0]}, Ny = {self.n_xyz[1]}, Nz = {self.n_xyz[2]}")
 
-        self.args = args
-        self.bound_min = torch.tensor(args.bound_min, device=device).float()
+        self.bound_min = self.bound[:, 0].float().to(self.device)
         self.bound_max = self.bound_min + self.voxel_size * torch.tensor(self.n_xyz, device=device)
-        self.latent_dim = latent_dim
-        self.device = device
+        self.latent_dim = cfg['model']['c_dim']
         self.integration_offsets = [torch.tensor(t, device=self.device, dtype=torch.float32) for t in [
             [-0.5, -0.5, -0.5], [-0.5, -0.5, 0.5], [-0.5, 0.5, -0.5], [-0.5, 0.5, 0.5],
             [0.5, -0.5, -0.5], [0.5, -0.5, 0.5], [0.5, 0.5, -0.5], [0.5, 0.5, 0.5]
         ]]
+        self.prune_min_vox_obs = cfg["mapping"]["prune_min_vox_obs"]
+        self.ignore_count_th = cfg["mapping"]["ignore_count_th"]
         # Directly modifiable from outside.
         self.extract_mesh_std_range = None
 
@@ -99,19 +81,12 @@ class DenseIndexedMap:
         }
         self.backup_var_names = ["indexer", "latent_vecs", "latent_vecs_pos", "voxel_obs_count"]
         self.backup_vars = {}
-        self.modifying_lock = threading.Lock()
         # Allow direct visit by variable
         for p in self.cold_vars.keys():
             setattr(DenseIndexedMap, p, property(
                 fget=functools.partial(DenseIndexedMap._get_var, name=p),
                 fset=functools.partial(DenseIndexedMap._set_var, name=p)
             ))
-
-        self.meshing_thread = None
-        self.meshing_thread_id = -1
-        self.meshing_stream = torch.cuda.Stream()
-        self.mesh_cache = MeshExtractCache(self.device)
-        self.latent_vecs.zero_()
 
     # def __del__(self):
     #     self.optimize_process.kill()
@@ -129,16 +104,10 @@ class DenseIndexedMap:
             self.cold_vars = torch.load(f)
 
     def _get_var(self, name):
-        if threading.get_ident() == self.meshing_thread_id and name in self.backup_var_names:
-            return self.backup_vars[name]
-        else:
-            return self.cold_vars[name]
+        return self.cold_vars[name]
 
     def _set_var(self, value, name):
-        if threading.get_ident() == self.meshing_thread_id and name in self.backup_var_names:
-            self.backup_vars[name] = value
-        else:
-            self.cold_vars[name] = value
+        self.cold_vars[name] = value
 
     def _inflate_latent_buffer(self, count: int):
         target_n_occupied = self.n_occupied + count
@@ -180,13 +149,6 @@ class DenseIndexedMap:
                             (idx // self.n_xyz[2]) % self.n_xyz[1],
                             idx % self.n_xyz[2]], dim=-1)
 
-    def _mark_updated_vec_id(self, new_vec_id: torch.Tensor):
-        """
-        :param new_vec_id: (B,) updated id (indexed in latent vectors)
-        """
-        self.mesh_cache.updated_vec_id = torch.cat([self.mesh_cache.updated_vec_id, new_vec_id])
-        self.mesh_cache.updated_vec_id = torch.unique(self.mesh_cache.updated_vec_id)
-
     def allocate_block(self, idx: torch.Tensor):
         """
         :param idx: (N, 3) or (N, ), if the first one, will call linearize id.
@@ -201,7 +163,7 @@ class DenseIndexedMap:
     STATUS_CONF_BIT = 1 << 0  # 1
     STATUS_SURF_BIT = 1 << 1  # 2
 
-    def integrate_keyframe(self, surface_xyz: torch.Tensor, do_optimize: bool = False, async_optimize: bool = False):
+    def integrate_keyframe(self, surface_xyz: torch.Tensor):
         """
         :param surface_xyz:  (N, 3) x, y, z
         :param do_optimize: whether to do optimization (this will be slow though)
@@ -228,9 +190,9 @@ class DenseIndexedMap:
 
         # Remove the observations where it is sparse.
         unq_mask = None
-        if self.args.prune_min_vox_obs > 0:
+        if self.prune_min_vox_obs > 0:
             _, unq_inv, unq_count = torch.unique(surface_grid_id, return_counts=True, return_inverse=True)
-            unq_mask = (unq_count > self.args.prune_min_vox_obs)[unq_inv]
+            unq_mask = (unq_count > self.prune_min_vox_obs)[unq_inv]
             surface_xyz_normalized = surface_xyz_normalized[unq_mask]
             surface_grid_id = surface_grid_id[unq_mask]
 
@@ -272,7 +234,7 @@ class DenseIndexedMap:
             sample_latent_id = self.indexer[self._linearize_id(grid_id)]
             sample_valid_mask = sample_latent_id != -1
             # Prune validity by ignore-count.
-            valid_valid_mask = self.voxel_obs_count[sample_latent_id[sample_valid_mask]] > self.args.ignore_count_th
+            valid_valid_mask = self.voxel_obs_count[sample_latent_id[sample_valid_mask]] > self.ignore_count_th
             sample_valid_mask[sample_valid_mask.clone()] = valid_valid_mask
             valid_latent = self.latent_vecs[sample_latent_id[sample_valid_mask]]
 

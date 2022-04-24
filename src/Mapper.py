@@ -8,7 +8,7 @@ from colorama import Fore, Style
 from torch.autograd import Variable
 
 from src.common import (get_camera_from_tensor, get_samples,
-                        get_tensor_from_camera, random_select)
+                        get_tensor_from_camera, random_select, get_pointcloud)
 from src.utils.datasets import get_dataset
 from src.utils.Visualizer import Visualizer
 
@@ -621,8 +621,14 @@ class Mapper(object):
                     if (idx % self.keyframe_every == 0 or (idx == self.n_img - 2)) \
                             and (idx not in self.keyframe_list):
                         self.keyframe_list.append(idx)
+                        # TODO: keyframes are added here, new voxels should be initialized here using the keyframe
                         self.keyframe_dict.append({'gt_c2w': gt_c2w.cpu(), 'idx': idx, 'color': gt_color.cpu(
                         ), 'depth': gt_depth.cpu(), 'est_c2w': cur_c2w.clone()})
+                        if not self.coarse_mapper:
+                            cur_pc = get_pointcloud(
+                                self.H, self.W, self.fx, self.fy, self.cx, self.cy,
+                                cur_c2w.clone(), gt_depth, self.device)
+                            self.c["dense_middle"].integrate_keyframe(cur_pc)
 
             if self.low_gpu_mem:
                 torch.cuda.empty_cache()
