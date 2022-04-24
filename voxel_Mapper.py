@@ -244,3 +244,15 @@ class DenseIndexedMap:
                                           latent_input=valid_latent, xyz_input=valid_xyz_rel, no_detach=True)
         
         return sdf.squeeze(-1), std.squeeze(-1), sample_valid_mask'''
+
+    def point_to_encoding(self, xyz):
+        xyz_normalized = (xyz - self.bound_min.unsqueeze(0)) / self.voxel_size
+        with torch.no_grad():
+            grid_id = torch.ceil(xyz_normalized.detach()).long() - 1
+            linear_id = self._linearize_id(xyz)
+            indices = self.indexer[linear_id]
+            point_embeddings = self.latent_vecs[indices]
+
+        return point_embeddings
+
+        
