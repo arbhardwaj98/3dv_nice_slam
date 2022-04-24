@@ -9,6 +9,7 @@ import numpy as np
 import numba
 import argparse
 import torch.multiprocessing as mp
+from pprint import pprint
 
 
 @numba.jit
@@ -38,7 +39,8 @@ class DenseIndexedMap:
         :param cfg:  config
         :param bound:  map bounds
         """
-
+        #mp.set_start_method('spawn', force=True)
+        mp.set_start_method('forkserver', force=True)
         self.cfg = cfg
         device = cfg["mapping"]["device"]
         self.device = device
@@ -82,7 +84,9 @@ class DenseIndexedMap:
         self.backup_var_names = ["indexer", "latent_vecs", "latent_vecs_pos", "voxel_obs_count"]
         self.backup_vars = {}
         # Allow direct visit by variable
+        #self.modifying_lock = threading.Lock()
         for p in self.cold_vars.keys():
+            print(p)
             setattr(DenseIndexedMap, p, property(
                 fget=functools.partial(DenseIndexedMap._get_var, name=p),
                 fset=functools.partial(DenseIndexedMap._set_var, name=p)
@@ -110,27 +114,27 @@ class DenseIndexedMap:
         self.cold_vars[name] = value
 
     def _inflate_latent_buffer(self, count: int):
-        target_n_occupied = self.n_occupied + count
-        if self.latent_vecs.size(0) < target_n_occupied:
-            new_size = self.latent_vecs.size(0)
+        target_n_occupied = self.cold_vars['n_occupied'] + count
+        if self.cold_vars['latent_vecs'].size(0) < target_n_occupied:
+            new_size = self.cold_vars['latent_vecs'].size(0)
             while new_size < target_n_occupied:
                 new_size *= 2
             new_vec = torch.empty((new_size, self.latent_dim), dtype=torch.float32, device=self.device)
-            new_vec[:self.latent_vecs.size(0)] = self.latent_vecs
+            new_vec[:self.cold_vars['latent_vecs'].size(0)] = self.cold_vars['latent_vecs']
             new_vec_pos = torch.ones((new_size,), dtype=torch.long, device=self.device) * -1
-            new_vec_pos[:self.latent_vecs.size(0)] = self.latent_vecs_pos
+            new_vec_pos[:self.cold_vars['latent_vecs'].size(0)] = self.cold_vars['latent_vecs_pos']
             new_voxel_conf = torch.zeros((new_size,), dtype=torch.float32, device=self.device)
-            new_voxel_conf[:self.latent_vecs.size(0)] = self.voxel_obs_count
+            new_voxel_conf[:self.cold_vars['latent_vecs'].size(0)] = self.cold_vars['voxel_obs_count']
             new_voxel_optim = torch.zeros((new_size,), dtype=torch.bool, device=self.device)
-            new_voxel_optim[:self.latent_vecs.size(0)] = self.voxel_optimized
-            new_vec[self.latent_vecs.size(0):].zero_()
-            self.latent_vecs = new_vec
-            self.latent_vecs_pos = new_vec_pos
-            self.voxel_obs_count = new_voxel_conf
-            self.voxel_optimized = new_voxel_optim
+            new_voxel_optim[:self.cold_vars['latent_vecs'].size(0)] = self.cold_vars['voxel_optimized']
+            new_vec[self.cold_vars['latent_vecs'].size(0):].zero_()
+            self.cold_vars['latent_vecs'] = new_vec
+            self.cold_vars['latent_vecs_pos'] = new_vec_pos
+            self.cold_vars['voxel_obs_count'] = new_voxel_conf
+            self.cold_vars['voxel_optimized'] = new_voxel_optim
 
-        new_inds = torch.arange(self.n_occupied, target_n_occupied, device=self.device, dtype=torch.long)
-        self.n_occupied = target_n_occupied
+        new_inds = torch.arange(self.cold_vars['n_occupied'], target_n_occupied, device=self.device, dtype=torch.long)
+        self.cold_vars['n_occupied'] = target_n_occupied
         return new_inds
 
     def _linearize_id(self, xyz: torch.Tensor):
@@ -157,8 +161,8 @@ class DenseIndexedMap:
         if idx.ndimension() == 2 and idx.size(1) == 3:
             idx = self._linearize_id(idx)
         new_id = self._inflate_latent_buffer(idx.size(0))
-        self.latent_vecs_pos[new_id] = idx
-        self.indexer[idx] = new_id
+        self.cold_vars['latent_vecs_pos'][new_id] = idx
+        self.cold_vars['indexer'][idx] = new_id
 
     STATUS_CONF_BIT = 1 << 0  # 1
     STATUS_SURF_BIT = 1 << 1  # 2
@@ -175,12 +179,13 @@ class DenseIndexedMap:
                     Please use consistent `async_optimize` during a SLAM session.
         :return:
         """
-        assert surface_xyz.device == self.device, \
-            f"Device of map {self.device} and input observation " \
-            f"{surface_xyz.device} must be the same."
+        surface_xyz = surface_xyz.to(self.device)
+        #assert surface_xyz.device == self.device, \
+        #    f"Device of map {self.device} and input observation " \
+        #    f"{surface_xyz.device} must be the same."
 
         # This lock prevents meshing thread reading error.
-        self.modifying_lock.acquire()
+        #self.modifying_lock.acquire()
 
         # -- 1. Allocate new voxels --
         surface_xyz_zeroed = surface_xyz - self.bound_min.unsqueeze(0)
@@ -197,15 +202,15 @@ class DenseIndexedMap:
             surface_grid_id = surface_grid_id[unq_mask]
 
         # Identify empty cells, fill the indexer.
-        invalid_surface_ind = self.indexer[surface_grid_id] == -1
+        invalid_surface_ind = self.cold_vars['indexer'][surface_grid_id] == -1
         if invalid_surface_ind.sum() > 0:
             invalid_flatten_id = torch.unique(surface_grid_id[invalid_surface_ind])
             # We expand this because we want to create some dummy voxels which helps the mesh extraction.
             invalid_flatten_id = self._expand_flatten_id(invalid_flatten_id, ensure_valid=False)  # Func
-            invalid_flatten_id = invalid_flatten_id[self.indexer[invalid_flatten_id] == -1]
+            invalid_flatten_id = invalid_flatten_id[self.cold_vars['indexer'][invalid_flatten_id] == -1]
             self.allocate_block(invalid_flatten_id)  # Func
 
-        self.modifying_lock.release()
+        #self.modifying_lock.release()
         return unq_mask
 
     def _expand_flatten_id(self, base_flatten_id: torch.Tensor, ensure_valid: bool = True):
@@ -217,7 +222,7 @@ class DenseIndexedMap:
                 rs_id[:, dim].clamp_(0, self.n_xyz[dim] - 1)
             rs_id = self._linearize_id(rs_id)
             if ensure_valid:
-                rs_id = rs_id[self.indexer[rs_id] != -1]
+                rs_id = rs_id[self.cold_vars['indexer'][rs_id] != -1]
             expanded_flatten_id.append(rs_id)
         expanded_flatten_id = torch.unique(torch.cat(expanded_flatten_id))
         return expanded_flatten_id
@@ -231,12 +236,12 @@ class DenseIndexedMap:
         xyz_normalized = (xyz - self.bound_min.unsqueeze(0)) / self.voxel_size
         with torch.no_grad():
             grid_id = torch.ceil(xyz_normalized.detach()).long() - 1
-            sample_latent_id = self.indexer[self._linearize_id(grid_id)]
+            sample_latent_id = self.cold_vars['indexer'][self._linearize_id(grid_id)]
             sample_valid_mask = sample_latent_id != -1
             # Prune validity by ignore-count.
-            valid_valid_mask = self.voxel_obs_count[sample_latent_id[sample_valid_mask]] > self.ignore_count_th
+            valid_valid_mask = self.cold_vars['voxel_obs_count'][sample_latent_id[sample_valid_mask]] > self.ignore_count_th
             sample_valid_mask[sample_valid_mask.clone()] = valid_valid_mask
-            valid_latent = self.latent_vecs[sample_latent_id[sample_valid_mask]]
+            valid_latent = self.cold_vars['latent_vecs'][sample_latent_id[sample_valid_mask]]
 
         valid_xyz_rel = xyz_normalized[sample_valid_mask] - grid_id[sample_valid_mask] - self.relative_network_offset
 
@@ -250,8 +255,8 @@ class DenseIndexedMap:
         with torch.no_grad():
             grid_id = torch.ceil(xyz_normalized.detach()).long() - 1
             linear_id = self._linearize_id(grid_id)
-            indices = self.indexer[linear_id]
-            point_embeddings = self.latent_vecs[indices]
+            indices = self.cold_vars['indexer'][linear_id]
+            point_embeddings = self.cold_vars['latent_vecs'][indices]
 
         return point_embeddings
 

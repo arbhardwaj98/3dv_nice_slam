@@ -11,7 +11,7 @@ tracking:
   pixels: 200
   iters: 50
 mapping:
-  every_frame: 5
+  every_frame: 1
   vis_freq: 50
   vis_inside_freq: 30
   mesh_freq: 50

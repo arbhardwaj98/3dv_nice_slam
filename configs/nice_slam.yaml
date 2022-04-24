@@ -45,7 +45,7 @@ mapping:
   color_refine: True
   middle_iter_ratio: 0.4
   fine_iter_ratio: 0.6
-  every_frame: 5
+  every_frame: 1
   BA: True
   BA_cam_lr: 0.001
   fix_fine: True

@@ -276,7 +276,7 @@ def get_pointcloud(H, W, fx, fy, cx, cy, c2w, depth, device):
 
     """
     rays_o, rays_d = get_rays(H, W, fx, fy, cx, cy, c2w, device)
-    pc = rays_d*depth + rays_o
+    pc = rays_d*(depth.unsqueeze(2)) + rays_o
 
     return pc.reshape(-1, 3)
 
