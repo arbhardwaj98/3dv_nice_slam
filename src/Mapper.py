@@ -612,8 +612,8 @@ class Mapper(object):
 
                 # TODO: Read optimization function
                 # Map optimization function, lots of changes here
-                _ = self.optimize_map(num_joint_iters, lr_factor, idx, gt_color, gt_depth,
-                                      gt_c2w, self.keyframe_dict, self.keyframe_list, cur_c2w=cur_c2w)
+                #_ = self.optimize_map(num_joint_iters, lr_factor, idx, gt_color, gt_depth,
+                #                      gt_c2w, self.keyframe_dict, self.keyframe_list, cur_c2w=cur_c2w)
                 if self.BA:
                     cur_c2w = _
                     self.estimate_c2w_list[idx] = cur_c2w

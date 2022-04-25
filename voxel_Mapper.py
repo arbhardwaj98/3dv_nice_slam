@@ -7,6 +7,7 @@ import torch.optim
 import numpy as np
 import numba
 import torch.multiprocessing as mp
+import copy
 
 
 @numba.jit
@@ -42,6 +43,8 @@ class DenseIndexedMap:
         device = cfg["mapping"]["device"]
         self.device = device
         self.bound = bound
+
+        self.store_idx = 0
 
         self.voxel_size = cfg["grid_len"][name]
         self.n_xyz = shape
@@ -159,6 +162,10 @@ class DenseIndexedMap:
         new_id = self._inflate_latent_buffer(idx.size(0))
         self.cold_vars['latent_vecs_pos'][new_id] = idx
         self.cold_vars['indexer'][idx] = new_id
+
+        #print(len(np.unique(self.cold_vars['indexer'].cpu().detach().numpy())))
+        torch.save(self.cold_vars['indexer'], '/home/ema/tanmay/3dvis/3dv_nice_slam/output/Apartment/temp/'+str(self.store_idx)+'.pkl')
+        self.store_idx = self.store_idx+1
 
     STATUS_CONF_BIT = 1 << 0  # 1
     STATUS_SURF_BIT = 1 << 1  # 2
