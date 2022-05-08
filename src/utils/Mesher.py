@@ -1,5 +1,5 @@
 import numpy as np
-import open3d as o3d
+# import open3d as o3d
 import skimage
 import torch
 import torch.nn.functional as F
@@ -210,72 +210,72 @@ class Mesher(object):
         unseen_mask = np.concatenate(unseen_mask_list, axis=0)
         return seen_mask, forecast_mask, unseen_mask
 
-    def get_bound_from_frames(self, keyframe_dict, scale=1):
-        """
-        Get the scene bound (convex hull),
-        using sparse estimated camera poses and corresponding depth images.
+    # def get_bound_from_frames(self, keyframe_dict, scale=1):
+    #     """
+    #     Get the scene bound (convex hull),
+    #     using sparse estimated camera poses and corresponding depth images.
 
-        Args:
-            keyframe_dict (list): list of keyframe info dictionary.
-            scale (float): scene scale.
+    #     Args:
+    #         keyframe_dict (list): list of keyframe info dictionary.
+    #         scale (float): scene scale.
 
-        Returns:
-            return_mesh (trimesh.Trimesh): the convex hull.
-        """
+    #     Returns:
+    #         return_mesh (trimesh.Trimesh): the convex hull.
+    #     """
 
-        H, W, fx, fy, cx, cy = self.H, self.W, self.fx, self.fy, self.cx, self.cy
+    #     H, W, fx, fy, cx, cy = self.H, self.W, self.fx, self.fy, self.cx, self.cy
 
-        if version.parse(o3d.__version__) >= version.parse('0.13.0'):
-            # for new version as provided in environment.yaml
-            volume = o3d.pipelines.integration.ScalableTSDFVolume(
-                voxel_length=4.0 * scale / 512.0,
-                sdf_trunc=0.04 * scale,
-                color_type=o3d.pipelines.integration.TSDFVolumeColorType.RGB8)
-        else:
-            # for lower version
-            volume = o3d.integration.ScalableTSDFVolume(
-                voxel_length=4.0 * scale / 512.0,
-                sdf_trunc=0.04 * scale,
-                color_type=o3d.integration.TSDFVolumeColorType.RGB8)
-        cam_points = []
-        for keyframe in keyframe_dict:
-            c2w = keyframe['est_c2w'].cpu().numpy()
-            # convert to open3d camera pose
-            c2w[:3, 1] *= -1.0
-            c2w[:3, 2] *= -1.0
-            w2c = np.linalg.inv(c2w)
-            cam_points.append(c2w[:3, 3])
-            depth = keyframe['depth'].cpu().numpy()
-            color = keyframe['color'].cpu().numpy()
+    #     if version.parse(o3d.__version__) >= version.parse('0.13.0'):
+    #         # for new version as provided in environment.yaml
+    #         volume = o3d.pipelines.integration.ScalableTSDFVolume(
+    #             voxel_length=4.0 * scale / 512.0,
+    #             sdf_trunc=0.04 * scale,
+    #             color_type=o3d.pipelines.integration.TSDFVolumeColorType.RGB8)
+    #     else:
+    #         # for lower version
+    #         volume = o3d.integration.ScalableTSDFVolume(
+    #             voxel_length=4.0 * scale / 512.0,
+    #             sdf_trunc=0.04 * scale,
+    #             color_type=o3d.integration.TSDFVolumeColorType.RGB8)
+    #     cam_points = []
+    #     for keyframe in keyframe_dict:
+    #         c2w = keyframe['est_c2w'].cpu().numpy()
+    #         # convert to open3d camera pose
+    #         c2w[:3, 1] *= -1.0
+    #         c2w[:3, 2] *= -1.0
+    #         w2c = np.linalg.inv(c2w)
+    #         cam_points.append(c2w[:3, 3])
+    #         depth = keyframe['depth'].cpu().numpy()
+    #         color = keyframe['color'].cpu().numpy()
 
-            depth = o3d.geometry.Image(depth.astype(np.float32))
-            color = o3d.geometry.Image(np.array(
-                (color * 255).astype(np.uint8)))
+    #         depth = o3d.geometry.Image(depth.astype(np.float32))
+    #         color = o3d.geometry.Image(np.array(
+    #             (color * 255).astype(np.uint8)))
 
-            intrinsic = o3d.camera.PinholeCameraIntrinsic(W, H, fx, fy, cx, cy)
-            rgbd = o3d.geometry.RGBDImage.create_from_color_and_depth(
-                color,
-                depth,
-                depth_scale=1,
-                depth_trunc=1000,
-                convert_rgb_to_intensity=False)
-            volume.integrate(rgbd, intrinsic, w2c)
+    #         intrinsic = o3d.camera.PinholeCameraIntrinsic(W, H, fx, fy, cx, cy)
+    #         rgbd = o3d.geometry.RGBDImage.create_from_color_and_depth(
+    #             color,
+    #             depth,
+    #             depth_scale=1,
+    #             depth_trunc=1000,
+    #             convert_rgb_to_intensity=False)
+    #         volume.integrate(rgbd, intrinsic, w2c)
 
-        cam_points = np.stack(cam_points, axis=0)
-        mesh = volume.extract_triangle_mesh()
-        mesh_points = np.array(mesh.vertices)
-        points = np.concatenate([cam_points, mesh_points], axis=0)
-        o3d_pc = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(points))
-        mesh, _ = o3d_pc.compute_convex_hull()
-        mesh.compute_vertex_normals()
-        if version.parse(o3d.__version__) >= version.parse('0.13.0'):
-            mesh = mesh.scale(self.clean_mesh_bound_scale, mesh.get_center())
-        else:
-            mesh = mesh.scale(self.clean_mesh_bound_scale, center=True)
-        points = np.array(mesh.vertices)
-        faces = np.array(mesh.triangles)
-        return_mesh = trimesh.Trimesh(vertices=points, faces=faces)
-        return return_mesh
+    #     cam_points = np.stack(cam_points, axis=0)
+    #     mesh = volume.extract_triangle_mesh()
+    #     mesh_points = np.array(mesh.vertices)
+    #     points = np.concatenate([cam_points, mesh_points], axis=0)
+    #     o3d_pc = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(points))
+    #     mesh, _ = o3d_pc.compute_convex_hull()
+    #     mesh.compute_vertex_normals()
+    #     if version.parse(o3d.__version__) >= version.parse('0.13.0'):
+    #         mesh = mesh.scale(self.clean_mesh_bound_scale, mesh.get_center())
+    #     else:
+    #         mesh = mesh.scale(self.clean_mesh_bound_scale, center=True)
+    #     points = np.array(mesh.vertices)
+    #     faces = np.array(mesh.triangles)
+    #     return_mesh = trimesh.Trimesh(vertices=points, faces=faces)
+    #     return return_mesh
 
     def eval_points(self, p, decoders, c=None, stage='color', device='cuda:0'):
         """
@@ -417,13 +417,14 @@ class Mesher(object):
                 z[unseen_mask] = -100
 
             else:
-                mesh_bound = self.get_bound_from_frames(
-                    keyframe_dict, self.scale)
+                # mesh_bound = self.get_bound_from_frames(
+                #     keyframe_dict, self.scale)
                 z = []
                 mask = []
                 print(points.shape)
                 for i, pnts in enumerate(torch.split(points, self.points_batch_size, dim=0)):
-                    mask.append(mesh_bound.contains(pnts.cpu().numpy()))
+                    mask.append(np.full(pnts.cpu().numpy().shape, True))
+                    # mask.append(mesh_bound.contains(pnts.cpu().numpy()))
                 mask = np.concatenate(mask, axis=0)
                 for i, pnts in enumerate(torch.split(points, self.points_batch_size, dim=0)):
                     z.append(self.eval_points(pnts, decoders, c, 'fine',
@@ -473,13 +474,13 @@ class Mesher(object):
                     mesh = trimesh.Trimesh(vertices=vertices,
                                            faces=faces,
                                            process=False)
-                    mesh_bound = self.get_bound_from_frames(
-                        keyframe_dict, self.scale)
+                    # mesh_bound = self.get_bound_from_frames(
+                    #     keyframe_dict, self.scale)
                     contain_mask = []
                     for i, pnts in enumerate(
                             np.array_split(points, self.points_batch_size,
                                            axis=0)):
-                        contain_mask.append(mesh_bound.contains(pnts))
+                        contain_mask.append(np.full(pnts.shape, True))
                     contain_mask = np.concatenate(contain_mask, axis=0)
                     not_contain_mask = ~contain_mask
                     face_mask = not_contain_mask[mesh.faces].all(axis=1)
@@ -524,34 +525,34 @@ class Mesher(object):
                     z = torch.cat(z, axis=0)
                     vertex_colors = z.numpy()
 
-                elif self.color_mesh_extraction_method == 'render_ray_along_normal':
-                    # for imap*
-                    # render out the color of the ray along vertex normal, and assign it to vertex color
-                    import open3d as o3d
-                    mesh = o3d.geometry.TriangleMesh(
-                        vertices=o3d.utility.Vector3dVector(vertices),
-                        triangles=o3d.utility.Vector3iVector(faces))
-                    mesh.compute_vertex_normals()
-                    vertex_normals = np.asarray(mesh.vertex_normals)
-                    rays_d = torch.from_numpy(vertex_normals).to(device)
-                    sign = -1.0
-                    length = 0.1
-                    rays_o = torch.from_numpy(
-                        vertices+sign*length*vertex_normals).to(device)
-                    color_list = []
-                    batch_size = self.ray_batch_size
-                    gt_depth = torch.zeros(vertices.shape[0]).to(device)
-                    gt_depth[:] = length
-                    for i in range(0, rays_d.shape[0], batch_size):
-                        rays_d_batch = rays_d[i:i+batch_size]
-                        rays_o_batch = rays_o[i:i+batch_size]
-                        gt_depth_batch = gt_depth[i:i+batch_size]
-                        depth, uncertainty, color = self.renderer.render_batch_ray(
-                            c, decoders, rays_d_batch, rays_o_batch, device, 
-                            stage='color', gt_depth=gt_depth_batch)
-                        color_list.append(color)
-                    color = torch.cat(color_list, dim=0)
-                    vertex_colors = color.cpu().numpy()
+                # elif self.color_mesh_extraction_method == 'render_ray_along_normal':
+                #     # for imap*
+                #     # render out the color of the ray along vertex normal, and assign it to vertex color
+                #     import open3d as o3d
+                #     mesh = o3d.geometry.TriangleMesh(
+                #         vertices=o3d.utility.Vector3dVector(vertices),
+                #         triangles=o3d.utility.Vector3iVector(faces))
+                #     mesh.compute_vertex_normals()
+                #     vertex_normals = np.asarray(mesh.vertex_normals)
+                #     rays_d = torch.from_numpy(vertex_normals).to(device)
+                #     sign = -1.0
+                #     length = 0.1
+                #     rays_o = torch.from_numpy(
+                #         vertices+sign*length*vertex_normals).to(device)
+                #     color_list = []
+                #     batch_size = self.ray_batch_size
+                #     gt_depth = torch.zeros(vertices.shape[0]).to(device)
+                #     gt_depth[:] = length
+                #     for i in range(0, rays_d.shape[0], batch_size):
+                #         rays_d_batch = rays_d[i:i+batch_size]
+                #         rays_o_batch = rays_o[i:i+batch_size]
+                #         gt_depth_batch = gt_depth[i:i+batch_size]
+                #         depth, uncertainty, color = self.renderer.render_batch_ray(
+                #             c, decoders, rays_d_batch, rays_o_batch, device, 
+                #             stage='color', gt_depth=gt_depth_batch)
+                #         color_list.append(color)
+                #     color = torch.cat(color_list, dim=0)
+                #     vertex_colors = color.cpu().numpy()
 
                 vertex_colors = np.clip(vertex_colors, 0, 1) * 255
                 vertex_colors = vertex_colors.astype(np.uint8)
