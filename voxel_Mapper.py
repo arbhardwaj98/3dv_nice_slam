@@ -163,8 +163,8 @@ class DenseIndexedMap:
         self.cold_vars['latent_vecs_pos'][new_id] = idx
         self.cold_vars['indexer'][idx] = new_id
 
-        #print(len(np.unique(self.cold_vars['indexer'].cpu().detach().numpy())))
-        torch.save(self.cold_vars['indexer'], '/home/ema/tanmay/3dvis/3dv_nice_slam/output/Apartment/temp/'+str(self.store_idx)+'.pkl')
+        # print(len(np.unique(self.cold_vars['indexer'].cpu().detach().numpy())))
+        # torch.save(self.cold_vars['indexer'], 'output/Apartment/temp/'+str(self.store_idx)+'.pkl')
         self.store_idx = self.store_idx+1
 
     STATUS_CONF_BIT = 1 << 0  # 1
