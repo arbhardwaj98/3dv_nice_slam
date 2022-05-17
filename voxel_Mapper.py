@@ -263,4 +263,28 @@ class DenseIndexedMap:
 
         return point_embeddings
 
+    def interpolate_point(self, xyz):
+        xyz_normalized = (xyz - self.bound_min.unsqueeze(0)) / self.voxel_size
+        xyz_normalized = xyz_normalized.detach()
+        with torch.no_grad():
+            low_ids = torch.floor(xyz_normalized - 0.5*self.voxel_size)
+            offsets = torch.tensor([
+                [0, 0, 0],
+                [0, 0, 1],
+                [0, 1, 1],
+                [0, 1, 0],
+                [1, 1, 0],
+                [1, 1, 1],
+                [1, 0, 1],
+                [1, 0, 0]
+            ]).unsqueeze(0)
+            corners = torch.tile(low_ids.unsqueeze(1), (1, 8, 1)) + torch.tile(offsets, (low_ids.shape[0], 1, 1))
+            corners_linearized = self._linearize_id(corners.reshape(-1, 3)).reshape(-1, 8)
+            corners_idx = self.cold_vars["indexer"][corners_linearized.reshape(-1)].reshape(-1, 8)
+            # TODO: Trilinear Interpolation
+
+
+
+
+
         

@@ -44,6 +44,18 @@ class Renderer(object):
             mask_z = (pi[:, 2] < bound[2][1]) & (pi[:, 2] > bound[2][0])
             mask = mask_x & mask_y & mask_z
 
+            # TODO:
+            '''
+            Normalize points.
+            Finding mask for points which lie inside the initialized voxels.
+            Interpolating points where mask with the initialized voxels
+            Decoding points to obtain occupancy and color.
+            Setting occupancy where not mask to zero.
+            What happens if point not inside initialized voxels. Should its occupancy be set to zero?
+            '''
+
+
+
             pi = pi.unsqueeze(0)
             if self.nice:
                 ret = decoders(pi, c_grid=c, stage=stage)
@@ -53,7 +65,7 @@ class Renderer(object):
             if len(ret.shape) == 1 and ret.shape[0] == 4:
                 ret = ret.unsqueeze(0)
 
-            ret[~mask, 3] = 100
+            ret[~mask, 3] = 100  # TODO: Why is this 100?
             rets.append(ret)
 
         ret = torch.cat(rets, dim=0)

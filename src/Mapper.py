@@ -252,6 +252,7 @@ class Mapper(object):
         H, W, fx, fy, cx, cy = self.H, self.W, self.fx, self.fy, self.cx, self.cy
         device = self.device
         c = self.c  #
+        dense_map = self.middle_dense_map
         cfg = self.cfg
         bottom = torch.from_numpy(np.array([0, 0, 0, 1.]).reshape(
             [1, 4])).type(torch.float32).to(device)
@@ -309,6 +310,7 @@ class Mapper(object):
                         coarse_grid_para.append(val)
                     elif key == 'grid_middle':
                         middle_grid_para.append(val)
+                        middle_grid_para.append(dense_map["latent_vecs"])
                     elif key == 'grid_fine':
                         fine_grid_para.append(val)
                     elif key == 'grid_color':
@@ -330,6 +332,8 @@ class Mapper(object):
                         coarse_grid_para.append(val_grad)
                     elif key == 'grid_middle':
                         middle_grid_para.append(val_grad)
+                        val_grad_dense = self.middle_dense_map["latent_vecs"][self.middle_dense_map["indexer"][mask]]
+                        middle_grid_para.append(val_grad_dense)
                     elif key == 'grid_fine':
                         fine_grid_para.append(val_grad)
                     elif key == 'grid_color':
@@ -402,6 +406,10 @@ class Mapper(object):
                             val = val.to(device)
                             val[mask] = val_grad
                             c[key] = val
+                            if key == "middle":
+                                val = self.middle_dense_map.cold_vars["latent_vecs"].to(device)
+                                val[mask] = val_grad_dense
+                                self.middle_dense_map.cold_vars["latent_vecs"] = val
 
                 if self.coarse_mapper:
                     self.stage = 'coarse'
@@ -623,7 +631,7 @@ class Mapper(object):
                     if (idx % self.keyframe_every == 0 or (idx == self.n_img - 2)) \
                             and (idx not in self.keyframe_list):
                         self.keyframe_list.append(idx)
-                        # TODO: keyframes are added here, new voxels should be initialized here using the keyframe
+                        # Keyframes are added here, new voxels should be initialized here using the keyframe
                         self.keyframe_dict.append({'gt_c2w': gt_c2w.cpu(), 'idx': idx, 'color': gt_color.cpu(
                         ), 'depth': gt_depth.cpu(), 'est_c2w': cur_c2w.clone()})
                         if not self.coarse_mapper:
