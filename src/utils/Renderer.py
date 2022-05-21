@@ -19,7 +19,7 @@ class Renderer(object):
 
         self.H, self.W, self.fx, self.fy, self.cx, self.cy = slam.H, slam.W, slam.fx, slam.fy, slam.cx, slam.cy
 
-    def eval_points(self, p, decoders, c=None, stage='color', device='cuda:0'):
+    def eval_points(self, p, decoders, c=None, map=None, stage='color', device='cuda:0'):
         """
         Evaluates the occupancy and/or color value for the points.
 
@@ -54,9 +54,11 @@ class Renderer(object):
             What happens if point not inside initialized voxels. Should its occupancy be set to zero?
             '''
 
+            inter_p, voxel_mask = map.interpolate_point(xyz=pi)
+            decoder_input = torch.zeros(pi.shape[0], map.latent_dim)
+            decoder_input[voxel_mask] = inter_p
 
-
-            pi = pi.unsqueeze(0)
+            inter_p = inter_p.unsqueeze(0)
             if self.nice:
                 ret = decoders(pi, c_grid=c, stage=stage)
             else:
