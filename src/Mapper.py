@@ -303,13 +303,13 @@ class Mapper(object):
                 dense_masked_c_grad = {}
                 mask_c2w = cur_c2w
             for key, val in c.items():
-                dense_val = dense_map_dict[key]["latent_vecs"]
-                dense_indexer = dense_map_dict[key]["indexer"]
+                dense_val = dense_map_dict[key].cold_vars["latent_vecs"]
+                dense_indexer = dense_map_dict[key].cold_vars["indexer"]
                 if not self.frustum_feature_selection:
                     val = Variable(val.to(device), requires_grad=True)
                     c[key] = val
                     dense_val = Variable(dense_val.to(device), requires_grad=True)
-                    dense_map_dict[key] = dense_val
+                    dense_map_dict[key].cold_vars["latent_vecs"] = dense_val
 
                     if key == 'grid_coarse':
                         coarse_grid_para.append(val)
@@ -325,9 +325,9 @@ class Mapper(object):
                         coarse_grid_para.append(dense_val)
 
                 else:
-                    mask = self.get_mask_from_c2w(
+                    mask_unpermuted = self.get_mask_from_c2w(
                         mask_c2w, key, val.shape[2:], gt_depth_np)
-                    mask = torch.from_numpy(mask).permute(2, 1, 0).unsqueeze(
+                    mask = torch.from_numpy(mask_unpermuted).permute(2, 1, 0).unsqueeze(
                         0).unsqueeze(0).repeat(1, val.shape[1], 1, 1, 1)
 
                     val = val.to(device)
@@ -339,10 +339,15 @@ class Mapper(object):
                     masked_c_grad[key] = val_grad
                     masked_c_grad[key + 'mask'] = mask
 
-                    dense_val_grad = dense_val[dense_indexer[mask]].clone()
+                    mask_unpermuted_voxels = torch.nonzero(mask_unpermuted)
+                    dense_val_grad = dense_val[
+                        dense_indexer[
+                            dense_map_dict[key]._linearize_id(mask_unpermuted_voxels)
+                        ]
+                    ].clone()
                     dense_val_grad = Variable(dense_val_grad.to(device), requires_grad=True)
                     dense_masked_c_grad[key] = dense_val_grad
-                    dense_masked_c_grad[key + 'mask'] = mask
+                    dense_masked_c_grad[key + 'mask'] = mask_unpermuted_voxels
 
                     if key == 'grid_coarse':
                         coarse_grid_para.append(val_grad)
@@ -427,10 +432,14 @@ class Mapper(object):
                             c[key] = val
 
                             dense_val_grad = dense_masked_c_grad[key]
-                            mask = dense_masked_c_grad[key + 'mask']
+                            mask_unpermuted_voxels = dense_masked_c_grad[key + 'mask']
                             dense_val = dense_map_dict[key]["latent_vecs"].to(device)
-                            dense_val[mask] = dense_val_grad
-                            dense_map_dict[key]["latent_vecs"] = dense_val
+                            dense_val[
+                                dense_map_dict[key].cold_vars["indexer"][
+                                    dense_map_dict[key]._linearize_id(mask_unpermuted_voxels)
+                                ]
+                            ] = dense_val_grad
+                            dense_map_dict[key].cold_vars["latent_vecs"] = dense_val
 
                 if self.coarse_mapper:
                     self.stage = 'coarse'

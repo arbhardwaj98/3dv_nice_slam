@@ -86,10 +86,11 @@ class NICE_SLAM():
             val.share_memory_()
             self.shared_c[key] = val
         for key, val in self.dense_map_dict.items():
-            for key2, val2 in self.val.cold_vars.items():
-                val2 = val2.to(self.cfg['mapping']['device'])
-                val2.share_memory_()
-                self.dense_map_dict[key].cold_vars[key2] = val2
+            for key2, val2 in val.cold_vars.items():
+                if isinstance(val2, torch.Tensor):
+                    val2 = val2.to(self.cfg['mapping']['device'])
+                    val2.share_memory_()
+                    self.dense_map_dict[key].cold_vars[key2] = val2
         self.shared_decoders = self.shared_decoders.to(
             self.cfg['mapping']['device'])
         self.shared_decoders.share_memory()
@@ -237,7 +238,7 @@ class NICE_SLAM():
                 coarse_key,
                 self.cfg,
                 self.bound,
-                list(map(int, (xyz_len / coarse_grid_len).tolist()))
+                list(map(int, (xyz_len * self.coarse_bound_enlarge / coarse_grid_len).tolist()))
             )
             dense_map[coarse_key] = coarse_dense_map
 

@@ -309,34 +309,45 @@ class NICE(nn.Module):
                                  skips=[2], n_blocks=5, hidden_size=hidden_size, 
                                  grid_len=color_grid_len, pos_embedding_method=pos_embedding_method)
 
-    def forward(self, p, c_grid, stage='middle', **kwargs):
+    def forward(self, p, inter_p, c_grid, stage='middle', **kwargs):
         """
             Output occupancy/color in different stage.
         """
         device = f'cuda:{p.get_device()}'
         if stage == 'coarse':
-            occ = self.coarse_decoder(p, c_grid)
+            occ, occ2 = self.coarse_decoder(p, inter_p, c_grid)
             occ = occ.squeeze(0)
+            occ2 = occ2.squeeze(0)
             raw = torch.zeros(occ.shape[0], 4).to(device).float()
             raw[..., -1] = occ
-            return raw
+            raw2 = torch.zeros(occ2.shape[0], 4).to(device).float()
+            raw2[..., -1] = occ2
+            return raw, raw2
         elif stage == 'middle':
-            middle_occ = self.middle_decoder(p, c_grid)
+            middle_occ, middle_occ2 = self.middle_decoder(p, inter_p, c_grid)
             middle_occ = middle_occ.squeeze(0)
+            middle_occ2 = middle_occ2.squeeze(0)
             raw = torch.zeros(middle_occ.shape[0], 4).to(device).float()
             raw[..., -1] = middle_occ
-            return raw
+            raw2 = torch.zeros(middle_occ2.shape[0], 4).to(device).float()
+            raw2[..., -1] = middle_occ2
+            return raw, raw2
         elif stage == 'fine':
-            fine_occ = self.fine_decoder(p, c_grid)
+            fine_occ, fine_occ2 = self.fine_decoder(p, inter_p, c_grid)
             raw = torch.zeros(fine_occ.shape[0], 4).to(device).float()
-            middle_occ = self.middle_decoder(p, c_grid)
+            raw2 = torch.zeros(fine_occ2.shape[0], 4).to(device).float()
+            middle_occ, middle_occ2 = self.middle_decoder(p, inter_p, c_grid)
             middle_occ = middle_occ.squeeze(0)
             raw[..., -1] = fine_occ+middle_occ
-            return raw
+            middle_occ2 = middle_occ2.squeeze(0)
+            raw2[..., -1] = fine_occ2 + middle_occ2
+            return raw, raw2
         elif stage == 'color':
-            fine_occ = self.fine_decoder(p, c_grid)
-            raw = self.color_decoder(p, c_grid)
-            middle_occ = self.middle_decoder(p, c_grid)
+            fine_occ, fine_occ2 = self.fine_decoder(p, inter_p, c_grid)
+            raw, raw2 = self.color_decoder(p, inter_p, c_grid)
+            middle_occ, middle_occ2 = self.middle_decoder(p, inter_p, c_grid)
             middle_occ = middle_occ.squeeze(0)
             raw[..., -1] = fine_occ+middle_occ
-            return raw
+            middle_occ2 = middle_occ2.squeeze(0)
+            raw2[..., -1] = fine_occ2 + middle_occ2
+            return raw, raw2

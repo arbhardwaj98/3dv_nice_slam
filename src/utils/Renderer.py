@@ -54,21 +54,21 @@ class Renderer(object):
             What happens if point not inside initialized voxels. Should its occupancy be set to zero?
             '''
 
-            # inter_p, voxel_mask = dense_map[stage].interpolate_point(xyz=pi)
-            # decoder_input = torch.zeros(pi.shape[0], map.latent_dim)
-            # decoder_input[voxel_mask, :] = inter_p
+            inter_p, voxel_mask = dense_map[stage].interpolate_point(xyz=pi)
+            decoder_input = torch.zeros(pi.shape[0], map.latent_dim)
+            decoder_input[voxel_mask, :] = inter_p
 
-            # inter_p = inter_p.unsqueeze(0)
+            decoder_input = decoder_input.unsqueeze(0)
             pi = pi.unsqueeze(0)
 
             if self.nice:
-                ret = decoders(pi, c_grid=c, stage=stage)
+                ret, ret2 = decoders(pi, decoder_input, c_grid=c, stage=stage)
             else:
                 ret = decoders(pi, c_grid=None)
                 ret2 = None
 
             ret = ret.squeeze(0)
-            # ret2 = ret2.squeeze(0)
+            ret2 = ret2.squeeze(0)
 
             if len(ret.shape) == 1 and ret.shape[0] == 4:
                 ret = ret.unsqueeze(0)
