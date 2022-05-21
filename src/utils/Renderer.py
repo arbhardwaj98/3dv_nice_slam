@@ -73,12 +73,13 @@ class Renderer(object):
         ret = torch.cat(rets, dim=0)
         return ret
 
-    def render_batch_ray(self, c, decoders, rays_d, rays_o, device, stage, gt_depth=None):
+    def render_batch_ray(self, c, dense_map_dict, decoders, rays_d, rays_o, device, stage, gt_depth=None):
         """
         Render color, depth and uncertainty of a batch of rays.
 
         Args:
             c (dict): feature grids.
+            dense_map_dict: Dictionary with dense map data structure
             decoders (nn.module): decoders.
             rays_d (tensor, N*3): rays direction.
             rays_o (tensor, N*3): rays origin.
