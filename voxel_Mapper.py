@@ -268,41 +268,39 @@ class DenseIndexedMap:
         xyz_normalized = (xyz - self.bound_min.unsqueeze(0)) / self.voxel_size
         xyz_normalized = xyz_normalized.detach()
 
-        with torch.no_grad():
+        grid = self.cold_vars["latent_vecs"]
 
-            grid = self.cold_vars["latent_vecs"]
+        low_ids = torch.floor(xyz_normalized - 0.5*self.voxel_size)
+        d = xyz_normalized - low_ids
 
-            low_ids = torch.floor(xyz_normalized - 0.5*self.voxel_size)
-            d = xyz_normalized - low_ids
+        offsets = torch.tensor([
+            [0, 0, 0],
+            [0, 0, 1],
+            [0, 1, 1],
+            [0, 1, 0],
+            [1, 1, 0],
+            [1, 1, 1],
+            [1, 0, 1],
+            [1, 0, 0]
+        ]).unsqueeze(0)
 
-            offsets = torch.tensor([
-                [0, 0, 0],
-                [0, 0, 1],
-                [0, 1, 1],
-                [0, 1, 0],
-                [1, 1, 0],
-                [1, 1, 1],
-                [1, 0, 1],
-                [1, 0, 0]
-            ]).unsqueeze(0)
+        corners = torch.tile(low_ids.unsqueeze(1), (1, 8, 1)) + torch.tile(offsets, (low_ids.shape[0], 1, 1))
+        corners_linearized = self._linearize_id(corners.reshape(-1, 3)).reshape(-1, 8)
+        corners_idx = self.cold_vars["indexer"][corners_linearized.reshape(-1)].reshape(-1, 8)
 
-            corners = torch.tile(low_ids.unsqueeze(1), (1, 8, 1)) + torch.tile(offsets, (low_ids.shape[0], 1, 1))
-            corners_linearized = self._linearize_id(corners.reshape(-1, 3)).reshape(-1, 8)
-            corners_idx = self.cold_vars["indexer"][corners_linearized.reshape(-1)].reshape(-1, 8)
+        mask = torch.sum((corners_idx == -1), dim=-1) == 0
 
-            mask = torch.sum((corners_idx == -1), dim=-1) == 0
+        corners_idx = corners_idx[mask]
+        d = d[mask]
 
-            corners_idx = corners_idx[mask]
-            d = d[mask]
+        c00 = grid[corners_idx[0]] * (1 - d[0]) + grid[corners_idx[7]] * d[0]
+        c01 = grid[corners_idx[1]] * (1 - d[0]) + grid[corners_idx[6]] * d[0]
+        c10 = grid[corners_idx[3]] * (1 - d[0]) + grid[corners_idx[4]] * d[0]
+        c11 = grid[corners_idx[2]] * (1 - d[0]) + grid[corners_idx[5]] * d[0]
 
-            c00 = grid[corners_idx[0]] * (1 - d[0]) + grid[corners_idx[7]] * d[0]
-            c01 = grid[corners_idx[1]] * (1 - d[0]) + grid[corners_idx[6]] * d[0]
-            c10 = grid[corners_idx[3]] * (1 - d[0]) + grid[corners_idx[4]] * d[0]
-            c11 = grid[corners_idx[2]] * (1 - d[0]) + grid[corners_idx[5]] * d[0]
+        c0 = c00 * (1 - d[1]) + c10 * d[1]
+        c1 = c01 * (1 - d[1]) + c11 * d[1]
 
-            c0 = c00 * (1 - d[1]) + c10 * d[1]
-            c1 = c01 * (1 - d[1]) + c11 * d[1]
+        c = c0 * (1 - d[2]) + c1 * d[2]
 
-            c = c0 * (1 - d[2]) + c1 * d[2]
-
-            return c, mask
+        return c, mask

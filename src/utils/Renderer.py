@@ -19,7 +19,7 @@ class Renderer(object):
 
         self.H, self.W, self.fx, self.fy, self.cx, self.cy = slam.H, slam.W, slam.fx, slam.fy, slam.cx, slam.cy
 
-    def eval_points(self, p, decoders, c=None, map=None, stage='color', device='cuda:0'):
+    def eval_points(self, p, decoders, c=None, dense_map=None, stage='color', device='cuda:0'):
         """
         Evaluates the occupancy and/or color value for the points.
 
@@ -54,16 +54,22 @@ class Renderer(object):
             What happens if point not inside initialized voxels. Should its occupancy be set to zero?
             '''
 
-            inter_p, voxel_mask = map.interpolate_point(xyz=pi)
-            decoder_input = torch.zeros(pi.shape[0], map.latent_dim)
-            decoder_input[voxel_mask] = inter_p
+            # inter_p, voxel_mask = dense_map[stage].interpolate_point(xyz=pi)
+            # decoder_input = torch.zeros(pi.shape[0], map.latent_dim)
+            # decoder_input[voxel_mask, :] = inter_p
 
-            inter_p = inter_p.unsqueeze(0)
+            # inter_p = inter_p.unsqueeze(0)
+            pi = pi.unsqueeze(0)
+
             if self.nice:
                 ret = decoders(pi, c_grid=c, stage=stage)
             else:
                 ret = decoders(pi, c_grid=None)
+                ret2 = None
+
             ret = ret.squeeze(0)
+            # ret2 = ret2.squeeze(0)
+
             if len(ret.shape) == 1 and ret.shape[0] == 4:
                 ret = ret.unsqueeze(0)
 
@@ -190,7 +196,7 @@ class Renderer(object):
 
         # TODO: Check eval_points function
         # Passes grid to decoders, check decoders.
-        raw = self.eval_points(pointsf, decoders, c, stage, device)
+        raw = self.eval_points(pointsf, decoders, c, dense_map_dict, stage, device)
         raw = raw.reshape(N_rays, N_samples+N_surface, -1)
 
         # convert raw occupancy values to outputs
