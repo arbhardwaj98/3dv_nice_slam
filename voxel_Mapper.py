@@ -46,7 +46,7 @@ class DenseIndexedMap:
 
         self.store_idx = 0
 
-        self.voxel_size = cfg["grid_len"][name]
+        self.voxel_size = cfg["grid_len"][name.strip("grid_")]
         self.n_xyz = shape
         logging.info(f"Map size Nx = {self.n_xyz[0]}, Ny = {self.n_xyz[1]}, Nz = {self.n_xyz[2]}")
 
