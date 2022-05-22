@@ -277,6 +277,7 @@ class Mesher(object):
     #     return_mesh = trimesh.Trimesh(vertices=points, faces=faces)
     #     return return_mesh
 
+    # TODO: Change this function and its occurences
     def eval_points(self, p, decoders, c=None, stage='color', device='cuda:0'):
         """
         Evaluates the occupancy and/or color value for the points.
@@ -345,6 +346,7 @@ class Mesher(object):
 
         return {"grid_points": grid_points, "xyz": [x, y, z]}
 
+    # TODO: Change this function, has occurences of eval_points
     def get_mesh(self,
                  mesh_out_file,
                  c,

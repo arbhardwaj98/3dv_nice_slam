@@ -140,7 +140,6 @@ class Tracker(object):
             if self.verbose:
                 print('Tracking: update the parameters from mapping')
             self.decoders = copy.deepcopy(self.shared_decoders).to(self.device)
-            # TODO: Map used here
             for key, val in self.shared_c.items():
                 val = val.clone().to(self.device)
                 self.c[key] = val
