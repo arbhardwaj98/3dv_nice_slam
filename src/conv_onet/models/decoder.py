@@ -174,7 +174,7 @@ class MLP(nn.Module):
                           mode=self.sample_mode).squeeze(-1).squeeze(-1)
         return c
 
-    def forward(self, p, c_grid=None):
+    def forward(self, p, inter_p, c_grid=None):
         if self.c_dim != 0:
             c = self.sample_grid_feature(
                 p, c_grid['grid_' + self.name]).transpose(1, 2).squeeze(0)
@@ -189,6 +189,7 @@ class MLP(nn.Module):
         p = p.float()
 
         embedded_pts = self.embedder(p)
+
         h = embedded_pts
         for i, l in enumerate(self.pts_linears):
             h = self.pts_linears[i](h)
@@ -200,7 +201,20 @@ class MLP(nn.Module):
         out = self.output_linear(h)
         if not self.color:
             out = out.squeeze(-1)
-        return out
+
+        h = embedded_pts
+        for i, l in enumerate(self.pts_linears):
+            h = self.pts_linears[i](h)
+            h = F.relu(h)
+            if self.c_dim != 0:
+                h = h + self.fc_c[i](inter_p)
+            if i in self.skips:
+                h = torch.cat([embedded_pts, h], -1)
+        out2 = self.output_linear(h)
+        if not self.color:
+            out2 = out2.squeeze(-1)
+
+        return out, out2
 
 
 class MLP_no_xyz(nn.Module):
@@ -259,9 +273,10 @@ class MLP_no_xyz(nn.Module):
                           align_corners=True, mode=self.sample_mode).squeeze(-1).squeeze(-1)
         return c
 
-    def forward(self, p, c_grid, **kwargs):
+    def forward(self, p, inter_p, c_grid, **kwargs):
         c = self.sample_grid_feature(
             p, c_grid['grid_' + self.name]).transpose(1, 2).squeeze(0)
+
         h = c
         for i, l in enumerate(self.pts_linears):
             h = self.pts_linears[i](h)
@@ -271,7 +286,18 @@ class MLP_no_xyz(nn.Module):
         out = self.output_linear(h)
         if not self.color:
             out = out.squeeze(-1)
-        return out
+
+        h = inter_p
+        for i, l in enumerate(self.pts_linears):
+            h = self.pts_linears[i](h)
+            h = F.relu(h)
+            if i in self.skips:
+                h = torch.cat([inter_p, h], -1)
+        out2 = self.output_linear(h)
+        if not self.color:
+            out2 = out2.squeeze(-1)
+
+        return out, out2
 
 
 class NICE(nn.Module):

@@ -522,7 +522,7 @@ class Mapper(object):
                 batch_gt_depth = batch_gt_depth[inside_mask]
                 batch_gt_color = batch_gt_color[inside_mask]
 
-            # TODO: read and edit renderer function, it requires the map.
+            # DONE: read and edit renderer function, it requires the map.
             #  The function where the depth calculations are done. Important
             ret = self.renderer.render_batch_ray(c, dense_map_dict, self.decoders, batch_rays_d,
                                                  batch_rays_o, device, self.stage,
@@ -542,7 +542,7 @@ class Mapper(object):
             if regulation:
                 # TODO: read and edit renderer function, it requires the map.
                 point_sigma = self.renderer.regulation(
-                    c, self.decoders, batch_rays_d, batch_rays_o, batch_gt_depth, device, self.stage)
+                    c, dense_map_dict, self.decoders, batch_rays_d, batch_rays_o, batch_gt_depth, device, self.stage)
                 regulation_loss = torch.abs(point_sigma).sum()
                 loss += 0.0005 * regulation_loss
 

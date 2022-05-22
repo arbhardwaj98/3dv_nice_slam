@@ -19,7 +19,7 @@ class Renderer(object):
 
         self.H, self.W, self.fx, self.fy, self.cx, self.cy = slam.H, slam.W, slam.fx, slam.fy, slam.cx, slam.cy
 
-    def eval_points(self, p, decoders, c=None, dense_map=None, stage='color', device='cuda:0'):
+    def eval_points(self, p, decoders, c=None, dense_map_dict=None, stage='color', device='cuda:0'):
         """
         Evaluates the occupancy and/or color value for the points.
 
@@ -34,9 +34,11 @@ class Renderer(object):
             ret (tensor): occupancy (and color) value of input points.
         """
 
+        dense_map = dense_map_dict["grid_" + stage]
         p_split = torch.split(p, self.points_batch_size)
         bound = self.bound
         rets = []
+        rets2 = []
         for pi in p_split:
             # mask for points out of bound
             mask_x = (pi[:, 0] < bound[0][1]) & (pi[:, 0] > bound[0][0])
@@ -54,9 +56,16 @@ class Renderer(object):
             What happens if point not inside initialized voxels. Should its occupancy be set to zero?
             '''
 
-            inter_p, voxel_mask = dense_map[stage].interpolate_point(xyz=pi)
-            decoder_input = torch.zeros(pi.shape[0], map.latent_dim)
+            inter_p, voxel_mask = dense_map.interpolate_point(xyz=pi)
+            decoder_input = torch.zeros(pi.shape[0], dense_map.latent_dim)
             decoder_input[voxel_mask, :] = inter_p
+
+            if stage == "fine":
+                inter_p_middle, voxel_mask_middle = dense_map_dict["grid_middle"].interpolate_point(xyz=pi)
+                inter_p = torch.cat([inter_p, inter_p_middle], dim=1)
+                voxel_mask = torch.logical_and(voxel_mask, voxel_mask_middle)
+                decoder_input = torch.zeros(pi.shape[0], 2 * dense_map.latent_dim)
+                decoder_input[voxel_mask, :] = inter_p
 
             decoder_input = decoder_input.unsqueeze(0)
             pi = pi.unsqueeze(0)
@@ -73,11 +82,20 @@ class Renderer(object):
             if len(ret.shape) == 1 and ret.shape[0] == 4:
                 ret = ret.unsqueeze(0)
 
+            if len(ret2.shape) == 1 and ret2.shape[0] == 4:
+                ret2 = ret2.unsqueeze(0)
+
             ret[~mask, 3] = 100  # TODO: Why is this 100?
             rets.append(ret)
 
+            ret2[~mask, 3] = 100  # TODO: Why is this 100?
+            ret2[~voxel_mask, -1] = 0
+            rets2.append(ret2)
+
         ret = torch.cat(rets, dim=0)
-        return ret
+        ret2 = torch.cat(rets2, dim=0)
+
+        return ret, ret2
 
     def render_batch_ray(self, c, dense_map_dict, decoders, rays_d, rays_o, device, stage, gt_depth=None):
         """
@@ -194,9 +212,9 @@ class Renderer(object):
             z_vals[..., :, None]  # [N_rays, N_samples+N_surface, 3]
         pointsf = pts.reshape(-1, 3)
 
-        # TODO: Check eval_points function
+        # DONE: Changed eval_points function
         # Passes grid to decoders, check decoders.
-        raw = self.eval_points(pointsf, decoders, c, dense_map_dict, stage, device)
+        _, raw = self.eval_points(pointsf, decoders, c, dense_map_dict, stage, device)
         raw = raw.reshape(N_rays, N_samples+N_surface, -1)
 
         # convert raw occupancy values to outputs
@@ -279,7 +297,7 @@ class Renderer(object):
             return depth, uncertainty, color
 
     # this is only for imap*
-    def regulation(self, c, decoders, rays_d, rays_o, gt_depth, device, stage='color'):
+    def regulation(self, c, dense_dict_map, decoders, rays_d, rays_o, gt_depth, device, stage='color'):
         """
         Regulation that disencourage any geometry from the camera center to 0.85*depth.
         For imap, the geometry will not be as good if this loss is not added.
