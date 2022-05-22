@@ -37,6 +37,7 @@ class Tracker(object):
         self.verbose = slam.verbose
         self.shared_c = slam.shared_c
         self.dense_map_dict = slam.dense_map_dict
+        print(11111)
         self.renderer = slam.renderer
         self.gt_c2w_list = slam.gt_c2w_list
         self.low_gpu_mem = slam.low_gpu_mem
@@ -44,7 +45,7 @@ class Tracker(object):
         self.mapping_cnt = slam.mapping_cnt
         self.shared_decoders = slam.shared_decoders
         self.estimate_c2w_list = slam.estimate_c2w_list
-        
+
         self.cam_lr = cfg['tracking']['lr']
         self.device = cfg['tracking']['device']
         self.num_cam_iters = cfg['tracking']['iters']
@@ -57,7 +58,7 @@ class Tracker(object):
         self.handle_dynamic = cfg['tracking']['handle_dynamic']
         self.use_color_in_tracking = cfg['tracking']['use_color_in_tracking']
         self.const_speed_assumption = cfg['tracking']['const_speed_assumption']
-        
+
         self.every_frame = cfg['mapping']['every_frame']
         self.no_vis_on_first_frame = cfg['mapping']['no_vis_on_first_frame']
 
@@ -67,8 +68,8 @@ class Tracker(object):
         self.n_img = len(self.frame_reader)
         self.frame_loader = DataLoader(
             self.frame_reader, batch_size=1, shuffle=False, num_workers=1)
-        self.visualizer = Visualizer(freq=cfg['tracking']['vis_freq'], inside_freq=cfg['tracking']['vis_inside_freq'], 
-                                     vis_dir=os.path.join(self.output, 'vis' if 'Demo' in self.output else 'tracking_vis'), 
+        self.visualizer = Visualizer(freq=cfg['tracking']['vis_freq'], inside_freq=cfg['tracking']['vis_inside_freq'],
+                                     vis_dir=os.path.join(self.output, 'vis' if 'Demo' in self.output else 'tracking_vis'),
                                      renderer=self.renderer, verbose=self.verbose, device=self.device)
         self.H, self.W, self.fx, self.fy, self.cx, self.cy = slam.H, slam.W, slam.fx, slam.fy, slam.cx, slam.cy
 
@@ -108,7 +109,7 @@ class Tracker(object):
             batch_gt_color = batch_gt_color[inside_mask]
 
         ret = self.renderer.render_batch_ray(
-            self.c, self.dense_map_dict_copy, self.decoders, batch_rays_d, batch_rays_o,  self.device, stage='color',  gt_depth=batch_gt_depth)
+            self.c, self.dense_map_dict, self.decoders, batch_rays_d, batch_rays_o,  self.device, stage='color',  gt_depth=batch_gt_depth)
         depth, uncertainty, color = ret
 
         uncertainty = uncertainty.detach()
@@ -143,12 +144,26 @@ class Tracker(object):
             for key, val in self.shared_c.items():
                 val = val.clone().to(self.device)
                 self.c[key] = val
-                dense_val = deepcopy(self.dense_map_dict[key])
-                for key2, val2 in dense_val.cold_vars.items():
+                cold_vars = {}
+                assert torch.sum(self.dense_map_dict[key].cold_vars["indexer"] != -1) <= \
+                       self.dense_map_dict[key].cold_vars["latent_vecs"].shape[0]
+                print(torch.sum(self.dense_map_dict[key].cold_vars["indexer"] != -1),
+                      self.dense_map_dict[key].cold_vars["latent_vecs"].shape[0])
+                for key2, val2 in self.dense_map_dict[key].cold_vars.items():
                     if isinstance(val2, torch.Tensor):
-                        dense_val.cold_vars[key2] = val2.to(self.device)
-                self.dense_map_dict_copy[key] = dense_val
+                        cold_vars[key2] = torch.tensor(val2.detach().clone().cpu().numpy()).to(self.device)
+                    else:
+                        cold_vars[key2] = val2
 
+                assert torch.sum(self.dense_map_dict[key].cold_vars["indexer"] != -1) <= \
+                       self.dense_map_dict[key].cold_vars["latent_vecs"].shape[0]
+                print(torch.sum(self.dense_map_dict[key].cold_vars["indexer"] != -1),
+                      self.dense_map_dict[key].cold_vars["latent_vecs"].shape[0])
+                dense_val = deepcopy(self.dense_map_dict[key])
+                dense_val.cold_vars = cold_vars
+                self.dense_map_dict_copy[key] = dense_val
+                assert torch.sum(self.dense_map_dict[key].cold_vars["indexer"] != -1) <= self.dense_map_dict[key].cold_vars["latent_vecs"].shape[0]
+                print(torch.sum(self.dense_map_dict[key].cold_vars["indexer"] != -1), self.dense_map_dict[key].cold_vars["latent_vecs"].shape[0])
             self.prev_mapping_idx = self.mapping_idx[0].clone()
 
     def run(self):
@@ -159,11 +174,11 @@ class Tracker(object):
             pbar = self.frame_loader
         else:
             pbar = tqdm(self.frame_loader)
-            
+
         for idx, gt_color, gt_depth, gt_c2w in pbar:
             if not self.verbose:
                 pbar.set_description(f"Tracking Frame {idx[0]}")
-                
+
             idx = idx[0]
             gt_depth = gt_depth[0]
             gt_color = gt_color[0]
@@ -177,7 +192,7 @@ class Tracker(object):
                         time.sleep(0.1)
                     pre_c2w = self.estimate_c2w_list[idx-1].to(device)
             elif self.sync_method == 'loose':
-                # mapping idx can be later than tracking idx is within the bound of 
+                # mapping idx can be later than tracking idx is within the bound of
                 # [-self.every_frame-self.every_frame//2, -self.every_frame+self.every_frame//2]
                 while self.mapping_idx[0] < idx-self.every_frame-self.every_frame//2:
                     time.sleep(0.1)
@@ -186,7 +201,7 @@ class Tracker(object):
                 pass
 
             self.update_para_from_mapping()
-            
+
             if self.verbose:
                 print(Fore.MAGENTA)
                 print("Tracking Frame ",  idx.item())
@@ -221,7 +236,7 @@ class Tracker(object):
                     camera_tensor = torch.cat([quad, T], 0)
                     cam_para_list_T = [T]
                     cam_para_list_quad = [quad]
-                    optimizer_camera = torch.optim.Adam([{'params': cam_para_list_T, 'lr': self.cam_lr}, 
+                    optimizer_camera = torch.optim.Adam([{'params': cam_para_list_T, 'lr': self.cam_lr},
                                                          {'params': cam_para_list_quad, 'lr': self.cam_lr*0.2}])
                 else:
                     camera_tensor = Variable(
