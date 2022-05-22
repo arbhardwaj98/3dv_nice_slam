@@ -433,7 +433,7 @@ class Mapper(object):
 
                             dense_val_grad = dense_masked_c_grad[key]
                             mask_unpermuted_voxels = dense_masked_c_grad[key + 'mask']
-                            dense_val = dense_map_dict[key]["latent_vecs"].to(device)
+                            dense_val = dense_map_dict[key].cold_vars["latent_vecs"].to(device)
                             dense_val[
                                 dense_map_dict[key].cold_vars["indexer"][
                                     dense_map_dict[key]._linearize_id(mask_unpermuted_voxels)
@@ -540,7 +540,7 @@ class Mapper(object):
             # for imap*, it use volume density
             regulation = (not self.occupancy)
             if regulation:
-                # TODO: read and edit renderer function, it requires the map.
+                # DONE: read and edit renderer function, it requires the map.
                 point_sigma = self.renderer.regulation(
                     c, dense_map_dict, self.decoders, batch_rays_d, batch_rays_o, batch_gt_depth, device, self.stage)
                 regulation_loss = torch.abs(point_sigma).sum()
@@ -563,6 +563,16 @@ class Mapper(object):
                         val = val.detach()
                         val[mask] = val_grad.clone().detach()
                         c[key] = val
+
+                        dense_val_grad = dense_masked_c_grad[key]
+                        mask_unpermuted_voxels = dense_masked_c_grad[key + 'mask']
+                        dense_val = dense_map_dict[key].cold_vars["latent_vecs"].detach()
+                        dense_val[
+                            dense_map_dict[key].cold_vars["indexer"][
+                                dense_map_dict[key]._linearize_id(mask_unpermuted_voxels)
+                            ]
+                        ] = dense_val_grad.clone().detach()
+                        dense_map_dict[key].cold_vars["latent_vecs"] = dense_val
 
         if self.BA:
             # put the updated camera poses back
@@ -648,7 +658,7 @@ class Mapper(object):
                 self.BA = (len(self.keyframe_list) > 4) and cfg['mapping']['BA'] and (
                     not self.coarse_mapper)
 
-                # TODO: Read optimization function
+                # DONE: Changed optimization function
                 # Map optimization function, lots of changes here
                 #_ = self.optimize_map(num_joint_iters, lr_factor, idx, gt_color, gt_depth,
                 #                      gt_c2w, self.keyframe_dict, self.keyframe_list, cur_c2w=cur_c2w)

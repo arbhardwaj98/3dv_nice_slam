@@ -7,7 +7,9 @@ import torch
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
 from colorama import Fore, Style
+from copy import deepcopy
 from tqdm import tqdm
+
 
 from src.common import (get_camera_from_tensor, get_samples,
                         get_tensor_from_camera)
@@ -34,6 +36,7 @@ class Tracker(object):
         self.output = slam.output
         self.verbose = slam.verbose
         self.shared_c = slam.shared_c
+        self.dense_map_dict = slam.dense_map_dict
         self.renderer = slam.renderer
         self.gt_c2w_list = slam.gt_c2w_list
         self.low_gpu_mem = slam.low_gpu_mem
@@ -105,7 +108,7 @@ class Tracker(object):
             batch_gt_color = batch_gt_color[inside_mask]
 
         ret = self.renderer.render_batch_ray(
-            self.c, self.decoders, batch_rays_d, batch_rays_o,  self.device, stage='color',  gt_depth=batch_gt_depth)
+            self.c, self.dense_map_dict_copy, self.decoders, batch_rays_d, batch_rays_o,  self.device, stage='color',  gt_depth=batch_gt_depth)
         depth, uncertainty, color = ret
 
         uncertainty = uncertainty.detach()
@@ -137,14 +140,22 @@ class Tracker(object):
             if self.verbose:
                 print('Tracking: update the parameters from mapping')
             self.decoders = copy.deepcopy(self.shared_decoders).to(self.device)
+            # TODO: Map used here
             for key, val in self.shared_c.items():
                 val = val.clone().to(self.device)
                 self.c[key] = val
+                dense_val = deepcopy(self.dense_map_dict[key])
+                for key2, val2 in dense_val.cold_vars.items():
+                    if isinstance(val2, torch.Tensor):
+                        dense_val.cold_vars[key2] = val2.to(self.device)
+                self.dense_map_dict_copy[key] = dense_val
+
             self.prev_mapping_idx = self.mapping_idx[0].clone()
 
     def run(self):
         device = self.device
         self.c = {}
+        self.dense_map_dict_copy = {}
         if self.verbose:
             pbar = self.frame_loader
         else:
@@ -185,6 +196,7 @@ class Tracker(object):
             if idx == 0 or self.gt_camera:
                 c2w = gt_c2w
                 if not self.no_vis_on_first_frame:
+                    # TODO: Change visualizer
                     self.visualizer.vis(
                         idx, 0, gt_depth, gt_color, c2w, self.c, self.decoders)
 
@@ -227,6 +239,7 @@ class Tracker(object):
                     if self.seperate_LR:
                         camera_tensor = torch.cat([quad, T], 0).to(self.device)
 
+                    # TODO: Change visualizer
                     self.visualizer.vis(
                         idx, cam_iter, gt_depth, gt_color, camera_tensor, self.c, self.decoders)
 

@@ -19,6 +19,7 @@ class Renderer(object):
 
         self.H, self.W, self.fx, self.fy, self.cx, self.cy = slam.H, slam.W, slam.fx, slam.fy, slam.cx, slam.cy
 
+    # SWITCH: Switch output of this function
     def eval_points(self, p, decoders, c=None, dense_map_dict=None, stage='color', device='cuda:0'):
         """
         Evaluates the occupancy and/or color value for the points.
@@ -230,7 +231,7 @@ class Renderer(object):
             pts = rays_o[..., None, :] + \
                 rays_d[..., None, :] * z_vals[..., :, None]
             pts = pts.reshape(-1, 3)
-            raw = self.eval_points(pts, decoders, c, stage, device)
+            _, raw = self.eval_points(pts, decoders, c, dense_map_dict, stage, device)
             raw = raw.reshape(N_rays, N_samples+N_importance+N_surface, -1)
 
             depth, uncertainty, color, weights = raw2outputs_nerf_color(
@@ -239,7 +240,7 @@ class Renderer(object):
 
         return depth, uncertainty, color
 
-    def render_img(self, c, decoders, c2w, device, stage, gt_depth=None):
+    def render_img(self, c, dense_dict_map, decoders, c2w, device, stage, gt_depth=None):
         """
         Renders out depth, uncertainty, and color images.
 
@@ -276,11 +277,11 @@ class Renderer(object):
                 rays_o_batch = rays_o[i:i+ray_batch_size]
                 if gt_depth is None:
                     ret = self.render_batch_ray(
-                        c, decoders, rays_d_batch, rays_o_batch, device, stage, gt_depth=None)
+                        c, dense_dict_map, decoders, rays_d_batch, rays_o_batch, device, stage, gt_depth=None)
                 else:
                     gt_depth_batch = gt_depth[i:i+ray_batch_size]
                     ret = self.render_batch_ray(
-                        c, decoders, rays_d_batch, rays_o_batch, device, stage, gt_depth=gt_depth_batch)
+                        c, dense_dict_map, decoders, rays_d_batch, rays_o_batch, device, stage, gt_depth=gt_depth_batch)
 
                 depth, uncertainty, color = ret
                 depth_list.append(depth.double())
@@ -333,6 +334,6 @@ class Renderer(object):
         pts = rays_o[..., None, :] + rays_d[..., None, :] * \
             z_vals[..., :, None]  # (N_rays, N_samples, 3)
         pointsf = pts.reshape(-1, 3)
-        raw = self.eval_points(pointsf, decoders, c, stage, device)
+        _, raw = self.eval_points(pointsf, decoders, c, dense_dict_map, stage, device)
         sigma = raw[:, -1]
         return sigma
