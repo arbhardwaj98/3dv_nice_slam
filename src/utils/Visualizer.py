@@ -22,7 +22,7 @@ class Visualizer(object):
         os.makedirs(f'{vis_dir}', exist_ok=True)
 
     def vis(self, idx, iter, gt_depth, gt_color, c2w_or_camera_tensor, c,
-            decoders):
+            dense_map_dict, decoders):
         """
         Visualization of depth, color images and save to file.
 
@@ -50,9 +50,10 @@ class Visualizer(object):
                 else:
                     c2w = c2w_or_camera_tensor
 
-                # TODO: Change map here
+                # DONE: Change map here
                 depth, uncertainty, color = self.renderer.render_img(
                     c,
+                    dense_map_dict,
                     decoders,
                     c2w,
                     self.device,

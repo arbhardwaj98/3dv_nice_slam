@@ -47,7 +47,7 @@ class Renderer(object):
             mask_z = (pi[:, 2] < bound[2][1]) & (pi[:, 2] > bound[2][0])
             mask = mask_x & mask_y & mask_z
 
-            # TODO:
+            # DONE:
             '''
             Normalize points.
             Finding mask for points which lie inside the initialized voxels.
@@ -240,7 +240,7 @@ class Renderer(object):
 
         return depth, uncertainty, color
 
-    def render_img(self, c, dense_dict_map, decoders, c2w, device, stage, gt_depth=None):
+    def render_img(self, c, dense_map_dict, decoders, c2w, device, stage, gt_depth=None):
         """
         Renders out depth, uncertainty, and color images.
 
@@ -277,11 +277,11 @@ class Renderer(object):
                 rays_o_batch = rays_o[i:i+ray_batch_size]
                 if gt_depth is None:
                     ret = self.render_batch_ray(
-                        c, dense_dict_map, decoders, rays_d_batch, rays_o_batch, device, stage, gt_depth=None)
+                        c, dense_map_dict, decoders, rays_d_batch, rays_o_batch, device, stage, gt_depth=None)
                 else:
                     gt_depth_batch = gt_depth[i:i+ray_batch_size]
                     ret = self.render_batch_ray(
-                        c, dense_dict_map, decoders, rays_d_batch, rays_o_batch, device, stage, gt_depth=gt_depth_batch)
+                        c, dense_map_dict, decoders, rays_d_batch, rays_o_batch, device, stage, gt_depth=gt_depth_batch)
 
                 depth, uncertainty, color = ret
                 depth_list.append(depth.double())
@@ -298,7 +298,7 @@ class Renderer(object):
             return depth, uncertainty, color
 
     # this is only for imap*
-    def regulation(self, c, dense_dict_map, decoders, rays_d, rays_o, gt_depth, device, stage='color'):
+    def regulation(self, c, dense_map_dict, decoders, rays_d, rays_o, gt_depth, device, stage='color'):
         """
         Regulation that disencourage any geometry from the camera center to 0.85*depth.
         For imap, the geometry will not be as good if this loss is not added.
@@ -334,6 +334,6 @@ class Renderer(object):
         pts = rays_o[..., None, :] + rays_d[..., None, :] * \
             z_vals[..., :, None]  # (N_rays, N_samples, 3)
         pointsf = pts.reshape(-1, 3)
-        _, raw = self.eval_points(pointsf, decoders, c, dense_dict_map, stage, device)
+        _, raw = self.eval_points(pointsf, decoders, c, dense_map_dict, stage, device)
         sigma = raw[:, -1]
         return sigma
