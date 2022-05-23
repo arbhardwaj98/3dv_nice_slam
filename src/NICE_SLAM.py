@@ -350,7 +350,7 @@ class NICE_SLAM():
         for p in processes:
             p.join()
 
-        self.dense_map_dict["grid_middle"].save('/output/dense_map_dict_new.pkl')
+        # self.dense_map_dict["grid_middle"].save('/output/dense_map_dict_new.pkl')
 
 
 # This part is required by torch.multiprocessing

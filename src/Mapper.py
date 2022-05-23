@@ -679,11 +679,11 @@ class Mapper(object):
                             self.H, self.W, self.fx, self.fy, self.cx, self.cy,
                             cur_c2w.clone(), gt_depth, self.device)
 
-                        for key, dense_map in self.dense_map_dict.items():
+                        for key in self.dense_map_dict.keys():
                             if not self.coarse_mapper and "coarse" not in key:
-                                dense_map.integrate_keyframe(cur_pc)
+                                self.dense_map_dict[key].integrate_keyframe(cur_pc)
                             elif self.coarse_mapper and "coarse" in key:
-                                dense_map.integrate_keyframe(cur_pc)
+                                self.dense_map_dict[key].integrate_keyframe(cur_pc)
 
             if self.low_gpu_mem:
                 torch.cuda.empty_cache()

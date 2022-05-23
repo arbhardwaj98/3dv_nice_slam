@@ -43,6 +43,7 @@ class DenseIndexedMap:
         device = cfg["mapping"]["device"]
         self.device = device
         self.bound = bound
+        self.bound.share_memory_()
 
         self.store_idx = 0
         self.name = name
@@ -52,7 +53,9 @@ class DenseIndexedMap:
         logging.info(f"Map size Nx = {self.n_xyz[0]}, Ny = {self.n_xyz[1]}, Nz = {self.n_xyz[2]}")
 
         self.bound_min = self.bound[:, 0].float().to(self.device)
+        self.bound_min.share_memory_()
         self.bound_max = self.bound_min + self.voxel_size * torch.tensor(self.n_xyz, device=device)
+        self.bound_max.share_memory_()
         self.latent_dim = cfg['model']['c_dim']
         self.integration_offsets = [torch.tensor(t, device=self.device, dtype=torch.float32) for t in [
             [-0.5, -0.5, -0.5], [-0.5, -0.5, 0.5], [-0.5, 0.5, -0.5], [-0.5, 0.5, 0.5],
@@ -68,20 +71,24 @@ class DenseIndexedMap:
                                                [0, -1, 0], [0, 1, 0],
                                                [0, 0, -1], [0, 0, 1]]]
         self.relative_network_offset = torch.tensor([[0.5, 0.5, 0.5]], device=self.device, dtype=torch.float32)
+        self.relative_network_offset.share_memory_()
 
         self.cold_vars = {
             "n_occupied": 0,
             "indexer": torch.ones(np.product(self.n_xyz), device=device, dtype=torch.long) * -1,
             # -- Voxel Attributes --
             # 1. Latent Vector (Geometry)
-            "latent_vecs": torch.empty((1, self.latent_dim), dtype=torch.float32, device=device),
+            "latent_vecs": torch.zeros((2048, self.latent_dim), dtype=torch.float32, device=device),
             # 2. Position
-            "latent_vecs_pos": torch.ones((1,), dtype=torch.long, device=device) * -1,
+            "latent_vecs_pos": torch.ones((2048,), dtype=torch.long, device=device) * -1,
             # 3. Confidence on its geometry
-            "voxel_obs_count": torch.zeros((1,), dtype=torch.float32, device=device),
+            "voxel_obs_count": torch.zeros((2048,), dtype=torch.float32, device=device),
             # 4. Optimized mark
-            "voxel_optimized": torch.zeros((1,), dtype=torch.bool, device=device)
+            "voxel_optimized": torch.zeros((2048,), dtype=torch.bool, device=device)
         }
+        for key in self.cold_vars.keys():
+            if isinstance(self.cold_vars[key], torch.Tensor):
+                self.cold_vars[key].share_memory_()
         self.backup_var_names = ["indexer", "latent_vecs", "latent_vecs_pos", "voxel_obs_count"]
         self.backup_vars = {}
         # Allow direct visit by variable
@@ -115,25 +122,29 @@ class DenseIndexedMap:
 
     def _inflate_latent_buffer(self, count: int):
         target_n_occupied = self.cold_vars['n_occupied'] + count
-        if self.cold_vars['latent_vecs'].size(0) < target_n_occupied:
+        '''if self.cold_vars['latent_vecs'].size(0) < target_n_occupied:
             new_size = self.cold_vars['latent_vecs'].size(0)
             while new_size < target_n_occupied:
                 new_size *= 2
-            new_vec = torch.empty((new_size, self.latent_dim), dtype=torch.float32, device=self.device)
+            new_vec = torch.empty((new_size, self.latent_dim), dtype=torch.float32, device=self.device).share_memory_()
             new_vec[:self.cold_vars['latent_vecs'].size(0)] = self.cold_vars['latent_vecs']
-            new_vec_pos = torch.ones((new_size,), dtype=torch.long, device=self.device) * -1
+            new_vec_pos = torch.ones((new_size,), dtype=torch.long, device=self.device).share_memory_() * -1
             new_vec_pos[:self.cold_vars['latent_vecs'].size(0)] = self.cold_vars['latent_vecs_pos']
-            new_voxel_conf = torch.zeros((new_size,), dtype=torch.float32, device=self.device)
+            new_voxel_conf = torch.zeros((new_size,), dtype=torch.float32, device=self.device).share_memory_()
             new_voxel_conf[:self.cold_vars['latent_vecs'].size(0)] = self.cold_vars['voxel_obs_count']
-            new_voxel_optim = torch.zeros((new_size,), dtype=torch.bool, device=self.device)
+            new_voxel_optim = torch.zeros((new_size,), dtype=torch.bool, device=self.device).share_memory_()
             new_voxel_optim[:self.cold_vars['latent_vecs'].size(0)] = self.cold_vars['voxel_optimized']
             new_vec[self.cold_vars['latent_vecs'].size(0):].zero_()
-            self.cold_vars['latent_vecs'] = new_vec
-            self.cold_vars['latent_vecs_pos'] = new_vec_pos
-            self.cold_vars['voxel_obs_count'] = new_voxel_conf
-            self.cold_vars['voxel_optimized'] = new_voxel_optim
+            self.cold_vars['latent_vecs'] = new_vec.share_memory_()
+            self.cold_vars['latent_vecs_pos'] = new_vec_pos.share_memory_()
+            self.cold_vars['voxel_obs_count'] = new_voxel_conf.share_memory_()
+            self.cold_vars['voxel_optimized'] = new_voxel_optim.share_memory_()
+            self.cold_vars['latent_vecs'].share_memory_()
+            self.cold_vars['latent_vecs_pos'].share_memory_()
+            self.cold_vars['voxel_obs_count'].share_memory_()
+            self.cold_vars['voxel_optimized'].share_memory_()'''
 
-        new_inds = torch.arange(self.cold_vars['n_occupied'], target_n_occupied, device=self.device, dtype=torch.long)
+        new_inds = torch.arange(self.cold_vars['n_occupied'], target_n_occupied, device=self.device, dtype=torch.long).share_memory_()
         self.cold_vars['n_occupied'] = target_n_occupied
         return new_inds
 
@@ -164,7 +175,7 @@ class DenseIndexedMap:
         self.cold_vars['latent_vecs_pos'][new_id] = idx
         self.cold_vars['indexer'][idx] = new_id
 
-        print(self.name, self.cold_vars['latent_vecs'].cpu().detach().shape)
+        # print(self.name, self.cold_vars['latent_vecs'].cpu().detach().shape)
         # torch.save(self.cold_vars['indexer'], 'output/Apartment/temp/'+str(self.store_idx)+'.pkl')
         self.store_idx = self.store_idx+1
 
@@ -294,14 +305,14 @@ class DenseIndexedMap:
         corners_idx = corners_idx[mask]
         d = d[mask]
 
-        c00 = grid[corners_idx[:, 0], :] * (1 - d[:, 0]) + grid[corners_idx[:, 7], :] * d[:, 0]
-        c01 = grid[corners_idx[:, 1], :] * (1 - d[:, 0]) + grid[corners_idx[:, 6], :] * d[:, 0]
-        c10 = grid[corners_idx[:, 3], :] * (1 - d[:, 0]) + grid[corners_idx[:, 4], :] * d[:, 0]
-        c11 = grid[corners_idx[:, 2], :] * (1 - d[:, 0]) + grid[corners_idx[:, 5], :] * d[:, 0]
+        c00 = grid[corners_idx[:, 0], :] * (1 - d[:, 0]).unsqueeze(1) + grid[corners_idx[:, 7], :] * d[:, 0].unsqueeze(1)
+        c01 = grid[corners_idx[:, 1], :] * (1 - d[:, 0]).unsqueeze(1) + grid[corners_idx[:, 6], :] * d[:, 0].unsqueeze(1)
+        c10 = grid[corners_idx[:, 3], :] * (1 - d[:, 0]).unsqueeze(1) + grid[corners_idx[:, 4], :] * d[:, 0].unsqueeze(1)
+        c11 = grid[corners_idx[:, 2], :] * (1 - d[:, 0]).unsqueeze(1) + grid[corners_idx[:, 5], :] * d[:, 0].unsqueeze(1)
 
-        c0 = c00 * (1 - d[:, 1]) + c10 * d[:, 1]
-        c1 = c01 * (1 - d[:, 1]) + c11 * d[:, 1]
+        c0 = c00 * (1 - d[:, 1]).unsqueeze(1) + c10 * d[:, 1].unsqueeze(1)
+        c1 = c01 * (1 - d[:, 1]).unsqueeze(1) + c11 * d[:, 1].unsqueeze(1)
 
-        c = c0 * (1 - d[:, 2]) + c1 * d[:, 2]
+        c = c0 * (1 - d[:, 2]).unsqueeze(1) + c1 * d[:, 2].unsqueeze(1)
 
         return c, mask

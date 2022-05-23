@@ -174,7 +174,7 @@ class MLP(nn.Module):
                           mode=self.sample_mode).squeeze(-1).squeeze(-1)
         return c
 
-    def forward(self, p, inter_p, c_grid=None):
+    def forward(self, p, dense_map_dict, c_grid=None):
         if self.c_dim != 0:
             c = self.sample_grid_feature(
                 p, c_grid['grid_' + self.name]).transpose(1, 2).squeeze(0)
@@ -186,8 +186,22 @@ class MLP(nn.Module):
                         p, c_grid['grid_middle']).transpose(1, 2).squeeze(0)
                 c = torch.cat([c, c_middle], dim=1)
 
-        p = p.float()
+        dense_map = dense_map_dict['grid_' + self.name]
+        inter_p, voxel_mask = dense_map.interpolate_point(xyz=p.squeeze(0))
+        decoder_input = torch.zeros(p.squeeze(0).shape[0], dense_map.latent_dim).to(p.device)
+        if not inter_p.shape[0] == 0:
+            decoder_input[voxel_mask, :] = inter_p.type(decoder_input.dtype)
 
+        if self.concat_feature:
+            inter_p_middle, voxel_mask_middle = dense_map_dict["grid_middle"].interpolate_point(xyz=p.squeeze(0))
+            voxel_mask = torch.logical_and(voxel_mask, voxel_mask_middle)
+            decoder_input_middle = torch.zeros(p.squeeze(0).shape[0], dense_map.latent_dim).to(p.device)
+            decoder_input_middle[voxel_mask_middle, :] = inter_p_middle.type(decoder_input_middle.dtype)
+            decoder_input_unmasked = torch.cat([decoder_input, decoder_input_middle], dim=1)
+            decoder_input = torch.zeros(p.squeeze(0).shape[0], 2 * dense_map.latent_dim).to(p.device)
+            decoder_input[voxel_mask] = decoder_input_unmasked[voxel_mask]
+
+        p = p.float()
         embedded_pts = self.embedder(p)
 
         h = embedded_pts
@@ -207,14 +221,14 @@ class MLP(nn.Module):
             h = self.pts_linears[i](h)
             h = F.relu(h)
             if self.c_dim != 0:
-                h = h + self.fc_c[i](inter_p)
+                h = h + self.fc_c[i](decoder_input)
             if i in self.skips:
                 h = torch.cat([embedded_pts, h], -1)
         out2 = self.output_linear(h)
         if not self.color:
             out2 = out2.squeeze(-1)
 
-        return out, out2
+        return out, out2, voxel_mask
 
 
 class MLP_no_xyz(nn.Module):
@@ -277,6 +291,12 @@ class MLP_no_xyz(nn.Module):
         c = self.sample_grid_feature(
             p, c_grid['grid_' + self.name]).transpose(1, 2).squeeze(0)
 
+        dense_map = dense_map_dict['grid_' + self.name]
+        inter_p, voxel_mask = dense_map.interpolate_point(xyz=p.squeeze(0))
+        decoder_input = torch.zeros(p.squeeze(0).shape[0], dense_map.latent_dim).to(p.device)
+        if not inter_p.shape[0] == 0:
+            decoder_input[voxel_mask, :] = inter_p.type(decoder_input.dtype)
+
         h = c
         for i, l in enumerate(self.pts_linears):
             h = self.pts_linears[i](h)
@@ -287,17 +307,17 @@ class MLP_no_xyz(nn.Module):
         if not self.color:
             out = out.squeeze(-1)
 
-        h = inter_p
+        h = decoder_input.to(c.device)
         for i, l in enumerate(self.pts_linears):
             h = self.pts_linears[i](h)
             h = F.relu(h)
             if i in self.skips:
-                h = torch.cat([inter_p, h], -1)
+                h = torch.cat([decoder_input, h], -1)
         out2 = self.output_linear(h)
         if not self.color:
             out2 = out2.squeeze(-1)
 
-        return out, out2
+        return out, out2, voxel_mask
 
 
 class NICE(nn.Module):
@@ -335,45 +355,45 @@ class NICE(nn.Module):
                                  skips=[2], n_blocks=5, hidden_size=hidden_size, 
                                  grid_len=color_grid_len, pos_embedding_method=pos_embedding_method)
 
-    def forward(self, p, inter_p, c_grid, stage='middle', **kwargs):
+    def forward(self, p, c_grid, dense_map_dict, stage='middle', **kwargs):
         """
             Output occupancy/color in different stage.
         """
         device = f'cuda:{p.get_device()}'
         if stage == 'coarse':
-            occ, occ2 = self.coarse_decoder(p, inter_p, c_grid)
+            occ, occ2, voxel_mask = self.coarse_decoder(p, dense_map_dict, c_grid)
             occ = occ.squeeze(0)
             occ2 = occ2.squeeze(0)
             raw = torch.zeros(occ.shape[0], 4).to(device).float()
             raw[..., -1] = occ
             raw2 = torch.zeros(occ2.shape[0], 4).to(device).float()
             raw2[..., -1] = occ2
-            return raw, raw2
+            return raw, raw2, voxel_mask
         elif stage == 'middle':
-            middle_occ, middle_occ2 = self.middle_decoder(p, inter_p, c_grid)
+            middle_occ, middle_occ2, voxel_mask = self.middle_decoder(p, dense_map_dict, c_grid)
             middle_occ = middle_occ.squeeze(0)
             middle_occ2 = middle_occ2.squeeze(0)
             raw = torch.zeros(middle_occ.shape[0], 4).to(device).float()
             raw[..., -1] = middle_occ
             raw2 = torch.zeros(middle_occ2.shape[0], 4).to(device).float()
             raw2[..., -1] = middle_occ2
-            return raw, raw2
+            return raw, raw2, voxel_mask
         elif stage == 'fine':
-            fine_occ, fine_occ2 = self.fine_decoder(p, inter_p, c_grid)
+            fine_occ, fine_occ2, voxel_mask = self.fine_decoder(p, dense_map_dict, c_grid)
             raw = torch.zeros(fine_occ.shape[0], 4).to(device).float()
             raw2 = torch.zeros(fine_occ2.shape[0], 4).to(device).float()
-            middle_occ, middle_occ2 = self.middle_decoder(p, inter_p, c_grid)
+            middle_occ, middle_occ2, voxel_mask = self.middle_decoder(p, dense_map_dict, c_grid)
             middle_occ = middle_occ.squeeze(0)
             raw[..., -1] = fine_occ+middle_occ
             middle_occ2 = middle_occ2.squeeze(0)
             raw2[..., -1] = fine_occ2 + middle_occ2
-            return raw, raw2
+            return raw, raw2, voxel_mask
         elif stage == 'color':
-            fine_occ, fine_occ2 = self.fine_decoder(p, inter_p, c_grid)
-            raw, raw2 = self.color_decoder(p, inter_p, c_grid)
-            middle_occ, middle_occ2 = self.middle_decoder(p, inter_p, c_grid)
+            fine_occ, fine_occ2, voxel_mask = self.fine_decoder(p, dense_map_dict, c_grid)
+            raw, raw2, voxel_mask = self.color_decoder(p, dense_map_dict, c_grid)
+            middle_occ, middle_occ2, voxel_mask = self.middle_decoder(p, dense_map_dict, c_grid)
             middle_occ = middle_occ.squeeze(0)
             raw[..., -1] = fine_occ+middle_occ
             middle_occ2 = middle_occ2.squeeze(0)
             raw2[..., -1] = fine_occ2 + middle_occ2
-            return raw, raw2
+            return raw, raw2, voxel_mask

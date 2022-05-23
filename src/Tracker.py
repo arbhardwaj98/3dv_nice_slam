@@ -141,29 +141,20 @@ class Tracker(object):
             if self.verbose:
                 print('Tracking: update the parameters from mapping')
             self.decoders = copy.deepcopy(self.shared_decoders).to(self.device)
+            assert torch.sum(self.dense_map_dict["grid_middle"].cold_vars["indexer"] != -1) <= \
+                   self.dense_map_dict["grid_middle"].cold_vars["latent_vecs"].shape[0]
             for key, val in self.shared_c.items():
                 val = val.clone().to(self.device)
                 self.c[key] = val
                 cold_vars = {}
-                assert torch.sum(self.dense_map_dict[key].cold_vars["indexer"] != -1) <= \
-                       self.dense_map_dict[key].cold_vars["latent_vecs"].shape[0]
-                print(torch.sum(self.dense_map_dict[key].cold_vars["indexer"] != -1),
-                      self.dense_map_dict[key].cold_vars["latent_vecs"].shape[0])
                 for key2, val2 in self.dense_map_dict[key].cold_vars.items():
                     if isinstance(val2, torch.Tensor):
                         cold_vars[key2] = torch.tensor(val2.detach().clone().cpu().numpy()).to(self.device)
                     else:
                         cold_vars[key2] = val2
-
-                assert torch.sum(self.dense_map_dict[key].cold_vars["indexer"] != -1) <= \
-                       self.dense_map_dict[key].cold_vars["latent_vecs"].shape[0]
-                print(torch.sum(self.dense_map_dict[key].cold_vars["indexer"] != -1),
-                      self.dense_map_dict[key].cold_vars["latent_vecs"].shape[0])
                 dense_val = deepcopy(self.dense_map_dict[key])
                 dense_val.cold_vars = cold_vars
                 self.dense_map_dict_copy[key] = dense_val
-                assert torch.sum(self.dense_map_dict[key].cold_vars["indexer"] != -1) <= self.dense_map_dict[key].cold_vars["latent_vecs"].shape[0]
-                print(torch.sum(self.dense_map_dict[key].cold_vars["indexer"] != -1), self.dense_map_dict[key].cold_vars["latent_vecs"].shape[0])
             self.prev_mapping_idx = self.mapping_idx[0].clone()
 
     def run(self):
