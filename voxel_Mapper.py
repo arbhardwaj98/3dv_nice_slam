@@ -164,7 +164,7 @@ class DenseIndexedMap:
                             (idx // self.n_xyz[2]) % self.n_xyz[1],
                             idx % self.n_xyz[2]], dim=-1)
 
-    def allocate_block(self, idx: torch.Tensor):
+    def allocate_block(self, idx: torch.Tensor, key):
         """
         :param idx: (N, 3) or (N, ), if the first one, will call linearize id.
         NOTE: this will not check index overflow!
@@ -176,13 +176,13 @@ class DenseIndexedMap:
         self.cold_vars['indexer'][idx] = new_id
 
         # print(self.name, self.cold_vars['latent_vecs'].cpu().detach().shape)
-        # torch.save(self.cold_vars['indexer'], 'output/Apartment/temp/'+str(self.store_idx)+'.pkl')
+        torch.save(self.cold_vars, '/home/ubuntu/code/3dv_nice_slam/output/Demo/'+key+'_'+str(self.store_idx)+'.pkl')
         self.store_idx = self.store_idx+1
 
     STATUS_CONF_BIT = 1 << 0  # 1
     STATUS_SURF_BIT = 1 << 1  # 2
 
-    def integrate_keyframe(self, surface_xyz: torch.Tensor):
+    def integrate_keyframe(self, surface_xyz: torch.Tensor, key):
         """
         :param surface_xyz:  (N, 3) x, y, z
         :param do_optimize: whether to do optimization (this will be slow though)
@@ -223,7 +223,7 @@ class DenseIndexedMap:
             # We expand this because we want to create some dummy voxels which helps the mesh extraction.
             invalid_flatten_id = self._expand_flatten_id(invalid_flatten_id, ensure_valid=False)  # Func
             invalid_flatten_id = invalid_flatten_id[self.cold_vars['indexer'][invalid_flatten_id] == -1]
-            self.allocate_block(invalid_flatten_id)  # Func
+            self.allocate_block(invalid_flatten_id, key)  # Func
 
         # self.modifying_lock.release()
         return unq_mask
