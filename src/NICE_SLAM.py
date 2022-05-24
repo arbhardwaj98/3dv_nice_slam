@@ -56,7 +56,6 @@ class NICE_SLAM():
             self.load_pretrain(cfg)
             self.grid_init(cfg)
         else:
-            self.shared_c = {}
             self.dense_map_dict = {}
 
         # need to use spawn
@@ -81,10 +80,6 @@ class NICE_SLAM():
         self.mapping_idx.share_memory_()
         self.mapping_cnt = torch.zeros((1)).int()  # counter for mapping
         self.mapping_cnt.share_memory_()
-        for key, val in self.shared_c.items():
-            val = val.to(self.cfg['mapping']['device'])
-            val.share_memory_()
-            self.shared_c[key] = val
         for key, val in self.dense_map_dict.items():
             for key2, val2 in val.cold_vars.items():
                 if isinstance(val2, torch.Tensor):
@@ -219,21 +214,12 @@ class NICE_SLAM():
         color_grid_len = cfg['grid_len']['color']
         self.color_grid_len = color_grid_len
 
-        c = {}
         dense_map = {}
         c_dim = cfg['model']['c_dim']
         xyz_len = self.bound[:, 1] - self.bound[:, 0]
 
         if self.coarse:
             coarse_key = 'grid_coarse'
-            coarse_val_shape = list(
-                map(int, (xyz_len * self.coarse_bound_enlarge / coarse_grid_len).tolist()))
-            coarse_val_shape[0], coarse_val_shape[2] = coarse_val_shape[2], coarse_val_shape[0]
-            self.coarse_val_shape = coarse_val_shape
-            val_shape = [1, c_dim, *coarse_val_shape]
-            coarse_val = torch.zeros(val_shape).normal_(mean=0, std=0.01)
-            c[coarse_key] = coarse_val
-
             coarse_dense_map = DenseIndexedMap(
                 coarse_key,
                 self.cfg,
@@ -243,13 +229,6 @@ class NICE_SLAM():
             dense_map[coarse_key] = coarse_dense_map
 
         middle_key = 'grid_middle'
-        middle_val_shape = list(map(int, (xyz_len / middle_grid_len).tolist()))
-        middle_val_shape[0], middle_val_shape[2] = middle_val_shape[2], middle_val_shape[0]
-        self.middle_val_shape = middle_val_shape
-        val_shape = [1, c_dim, *middle_val_shape]
-        middle_val = torch.zeros(val_shape).normal_(mean=0, std=0.01)
-        c[middle_key] = middle_val
-
         middle_dense_map = DenseIndexedMap(
             middle_key,
             self.cfg,
@@ -259,13 +238,6 @@ class NICE_SLAM():
         dense_map[middle_key] = middle_dense_map
 
         fine_key = 'grid_fine'
-        fine_val_shape = list(map(int, (xyz_len / fine_grid_len).tolist()))
-        fine_val_shape[0], fine_val_shape[2] = fine_val_shape[2], fine_val_shape[0]
-        self.fine_val_shape = fine_val_shape
-        val_shape = [1, c_dim, *fine_val_shape]
-        fine_val = torch.zeros(val_shape).normal_(mean=0, std=0.0001)
-        c[fine_key] = fine_val
-
         fine_dense_map = DenseIndexedMap(
             fine_key,
             self.cfg,
@@ -275,13 +247,6 @@ class NICE_SLAM():
         dense_map[fine_key] = fine_dense_map
 
         color_key = 'grid_color'
-        color_val_shape = list(map(int, (xyz_len / color_grid_len).tolist()))
-        color_val_shape[0], color_val_shape[2] = color_val_shape[2], color_val_shape[0]
-        self.color_val_shape = color_val_shape
-        val_shape = [1, c_dim, *color_val_shape]
-        color_val = torch.zeros(val_shape).normal_(mean=0, std=0.01)
-        c[color_key] = color_val
-
         color_dense_map = DenseIndexedMap(
             color_key,
             self.cfg,
@@ -290,7 +255,6 @@ class NICE_SLAM():
         )
         dense_map[color_key] = color_dense_map
 
-        self.shared_c = c
         self.dense_map_dict = dense_map
 
     def tracking(self, rank):

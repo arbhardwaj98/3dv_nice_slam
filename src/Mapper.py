@@ -28,7 +28,6 @@ class Mapper(object):
 
         self.idx = slam.idx
         self.nice = slam.nice
-        self.c = slam.shared_c        # Dict to store map encodings
         self.dense_map_dict = slam.dense_map_dict       # New dict for dense maps
         self.bound = slam.bound
         self.logger = slam.logger
@@ -250,7 +249,6 @@ class Mapper(object):
         """
         H, W, fx, fy, cx, cy = self.H, self.W, self.fx, self.fy, self.cx, self.cy
         device = self.device
-        c = self.c
         dense_map_dict = self.dense_map_dict
         cfg = self.cfg
         bottom = torch.from_numpy(np.array([0, 0, 0, 1.]).reshape(
@@ -299,15 +297,12 @@ class Mapper(object):
         gt_depth_np = cur_gt_depth.cpu().numpy()
         if self.nice:
             if self.frustum_feature_selection:
-                masked_c_grad = {}
                 dense_masked_c_grad = {}
                 mask_c2w = cur_c2w
-            for key, val in c.items():
+            for key in dense_map_dict.keys():
                 dense_val = dense_map_dict[key].cold_vars["latent_vecs"]
                 dense_indexer = dense_map_dict[key].cold_vars["indexer"]
                 if not self.frustum_feature_selection:
-                    val = Variable(val.to(device), requires_grad=True)
-                    c[key] = val
                     dense_val = Variable(dense_val.to(device), requires_grad=True)
                     dense_map_dict[key].cold_vars["latent_vecs"] = dense_val
 
@@ -467,7 +462,7 @@ class Mapper(object):
             # DONE: Visualizer just passes the map 'c' to renderer, edit the renderer.
             if (not (idx == 0 and self.no_vis_on_first_frame)) and ('Demo' not in self.output):
                 self.visualizer.vis(
-                    idx, joint_iter, cur_gt_depth, cur_gt_color, cur_c2w, self.c, self.dense_map_dict, self.decoders)
+                    idx, joint_iter, cur_gt_depth, cur_gt_color, cur_c2w, self.dense_map_dict, self.decoders)
 
             optimizer.zero_grad()
             batch_rays_d_list = []
@@ -705,14 +700,14 @@ class Mapper(object):
                 # DONE: map as argument
                 if (idx % self.mesh_freq == 0) and (not (idx == 0 and self.no_mesh_on_first_frame)):
                     mesh_out_file = f'{self.output}/mesh/{idx:05d}_mesh.ply'
-                    self.mesher.get_mesh(mesh_out_file, self.c, self.dense_map_dict, self.decoders, self.keyframe_dict,
+                    self.mesher.get_mesh(mesh_out_file, self.dense_map_dict, self.decoders, self.keyframe_dict,
                                          self.estimate_c2w_list,
                                          idx, self.device, show_forecast=self.mesh_coarse_level,
                                          clean_mesh=self.clean_mesh, get_mask_use_all_frames=False)
 
                 if idx == self.n_img - 1:
                     mesh_out_file = f'{self.output}/mesh/final_mesh.ply'
-                    self.mesher.get_mesh(mesh_out_file, self.c, self.dense_map_dict, self.decoders, self.keyframe_dict,
+                    self.mesher.get_mesh(mesh_out_file, self.dense_map_dict, self.decoders, self.keyframe_dict,
                                          self.estimate_c2w_list,
                                          idx, self.device, show_forecast=self.mesh_coarse_level,
                                          clean_mesh=self.clean_mesh, get_mask_use_all_frames=False)
@@ -720,7 +715,7 @@ class Mapper(object):
                         f"cp {mesh_out_file} {self.output}/mesh/{idx:05d}_mesh.ply")
                     if self.eval_rec:
                         mesh_out_file = f'{self.output}/mesh/final_mesh_eval_rec.ply'
-                        self.mesher.get_mesh(mesh_out_file, self.c, self.dense_map_dict, self.decoders, self.keyframe_dict,
+                        self.mesher.get_mesh(mesh_out_file, self.dense_map_dict, self.decoders, self.keyframe_dict,
                                              self.estimate_c2w_list, idx, self.device, show_forecast=False,
                                              clean_mesh=self.clean_mesh, get_mask_use_all_frames=True)
                     break

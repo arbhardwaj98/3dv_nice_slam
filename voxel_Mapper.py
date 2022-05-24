@@ -327,8 +327,6 @@ class DenseIndexedMap:
         corners_idx = self.cold_vars["indexer"][corners_linearized.reshape(-1)].reshape(-1, 8)
 
         mask = torch.sum((corners_idx == -1), dim=-1) == 0
-        if corners_idx.shape[0] != mask.shape[0]:
-            print(corners_idx.shape[0], mask.shape[0])
         # print(mask.shape)
         # print(mask)
         # print(corners_idx.shape)
