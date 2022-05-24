@@ -107,7 +107,8 @@ class Tracker(object):
             batch_gt_color = batch_gt_color[inside_mask]
 
         ret = self.renderer.render_batch_ray(
-            self.dense_map_dict_copy, self.decoders, batch_rays_d, batch_rays_o,  self.device, stage='color',  gt_depth=batch_gt_depth)
+            self.dense_map_dict_copy, self.decoders, batch_rays_d, batch_rays_o,  self.device, stage='color',  gt_depth=batch_gt_depth
+        )
         depth, uncertainty, color = ret
 
         uncertainty = uncertainty.detach()

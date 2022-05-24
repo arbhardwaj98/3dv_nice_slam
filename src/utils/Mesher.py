@@ -320,6 +320,9 @@ class Mesher(object):
             else:
                 ret2 = decoders(pi, c_grid=None)
 
+            if len(ret2.shape) == 1 and ret2.shape[0] == 4:
+                ret2 = ret2.unsqueeze(0)
+
             ret2[~mask, 3] = 100
 
             rets2.append(ret2)

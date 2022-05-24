@@ -11,8 +11,8 @@ class Logger(object):
 
     def __init__(self, cfg, args, slam
                  ):
+        self.dense_map_dict = slam.dense_map_dict
         self.ckptsdir = slam.ckptsdir
-        self.shared_c = slam.shared_c
         self.shared_decoders = slam.shared_decoders
         self.estimate_c2w_list = slam.estimate_c2w_list
         self.gt_c2w_list = slam.gt_c2w_list
@@ -21,7 +21,7 @@ class Logger(object):
     def log(self, idx, keyframe_dict, keyframe_list, selected_keyframes=None):
         path = os.path.join(self.ckptsdir, '{:05d}.tar'.format(idx))
         torch.save({
-            'c': self.shared_c,
+            'map_dict': self.dense_map_dict,
             'decoder_state_dict': self.shared_decoders.state_dict(),
             'gt_c2w_list': self.gt_c2w_list,
             'estimate_c2w_list': self.estimate_c2w_list,

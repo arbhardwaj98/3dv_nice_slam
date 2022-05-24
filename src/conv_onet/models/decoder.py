@@ -209,10 +209,7 @@ class MLP(nn.Module):
 
         out2 = out2.squeeze(0)
 
-        if len(out2.shape) == 1 and out2.shape[0] == 4:
-            out2 = out2.unsqueeze(0)
-
-        out2[~voxel_mask, -1] = -100
+        out2[~voxel_mask] = -100
 
         return out2
 
@@ -292,10 +289,7 @@ class MLP_no_xyz(nn.Module):
 
         out2 = out2.squeeze(0)
 
-        if len(out2.shape) == 1 and out2.shape[0] == 4:
-            out2 = out2.unsqueeze(0)
-
-        out2[~voxel_mask, -1] = -100
+        out2[~voxel_mask] = -100
 
         return out2
 
