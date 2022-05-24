@@ -276,6 +276,7 @@ class Mesher(object):
     #     faces = np.array(mesh.triangles)
     #     return_mesh = trimesh.Trimesh(vertices=points, faces=faces)
     #     return return_mesh
+        # SWITCH: Switch output of this function
 
     def eval_points(self, p, decoders, c=None, dense_map_dict=None, stage='color', device='cuda:0'):
         """
@@ -341,7 +342,7 @@ class Mesher(object):
         ret = torch.cat(rets, dim=0)
         ret2 = torch.cat(rets2, dim=0)
 
-        return ret, ret2
+        return ret2
 
     def get_grid_uniform(self, resolution):
         """
@@ -451,7 +452,7 @@ class Mesher(object):
                 mask = []
                 print(points.shape)
                 for i, pnts in enumerate(torch.split(points, self.points_batch_size, dim=0)):
-                    mask.append(np.full(pnts.cpu().numpy().shape, True))
+                    mask.append(np.full(pnts.cpu().numpy().shape[0], True))
                     # mask.append(mesh_bound.contains(pnts.cpu().numpy()))
                 mask = np.concatenate(mask, axis=0)
                 for i, pnts in enumerate(torch.split(points, self.points_batch_size, dim=0)):
@@ -508,7 +509,7 @@ class Mesher(object):
                     for i, pnts in enumerate(
                             np.array_split(points, self.points_batch_size,
                                            axis=0)):
-                        contain_mask.append(np.full(pnts.shape, True))
+                        contain_mask.append(np.full(pnts.shape[0], True))
                     contain_mask = np.concatenate(contain_mask, axis=0)
                     not_contain_mask = ~contain_mask
                     face_mask = not_contain_mask[mesh.faces].all(axis=1)

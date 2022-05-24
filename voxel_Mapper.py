@@ -176,7 +176,7 @@ class DenseIndexedMap:
         self.cold_vars['indexer'][idx] = new_id
 
         # print(self.name, self.cold_vars['latent_vecs'].cpu().detach().shape)
-        torch.save(self.cold_vars, '/home/ubuntu/code/3dv_nice_slam/output/Demo/'+key+'_'+str(self.store_idx)+'.pkl')
+        # torch.save(self.cold_vars, 'output/Demo/'+key+'_'+str(self.store_idx)+'.pkl')
         self.store_idx = self.store_idx+1
 
     STATUS_CONF_BIT = 1 << 0  # 1
@@ -277,12 +277,25 @@ class DenseIndexedMap:
 
     def interpolate_point(self, xyz):
 
+        mask_x = (xyz[:, 0] < self.bound[0][1]) & (xyz[:, 0] > self.bound[0][0])
+        mask_y = (xyz[:, 1] < self.bound[1][1]) & (xyz[:, 1] > self.bound[1][0])
+        mask_z = (xyz[:, 2] < self.bound[2][1]) & (xyz[:, 2] > self.bound[2][0])
+        mask = mask_x & mask_y & mask_z
+
+        out, voxel_mask = self.interpolate_bounded_point(xyz[mask])
+
+        mask_combined = torch.zeros(xyz.shape[0], dtype=bool).to(mask.device)
+        mask_combined[mask] = mask[mask] & voxel_mask
+        return out, mask_combined
+
+    def interpolate_bounded_point(self, xyz):
+
         xyz_normalized = (xyz - self.bound_min.unsqueeze(0)) / self.voxel_size
         xyz_normalized = xyz_normalized.detach()
 
         grid = self.cold_vars["latent_vecs"]
 
-        low_ids = torch.floor(xyz_normalized - 0.5 * self.voxel_size).int()
+        low_ids = torch.floor(xyz_normalized - 0.5).int()
         d = xyz_normalized - low_ids
 
         offsets = torch.tensor([
@@ -296,12 +309,30 @@ class DenseIndexedMap:
             [1, 0, 0]
         ], dtype=int).to(xyz.device).unsqueeze(0)
 
-        corners = torch.tile(low_ids.unsqueeze(1), (1, 8, 1)) + torch.tile(offsets, (low_ids.shape[0], 1, 1)).long()
+        corners = (torch.tile(low_ids.unsqueeze(1), (1, 8, 1)) + torch.tile(offsets, (low_ids.shape[0], 1, 1))).long()
+        corners = torch.max(
+            torch.min(
+                corners,
+                torch.tile(
+                    (torch.tensor(self.n_xyz) - 1).reshape((1, 1, -1)),
+                    (corners.shape[0], corners.shape[1], 1)
+                ).to(corners.device),
+            ),
+            torch.tile(
+                (torch.tensor([0, 0, 0])).reshape((1, 1, -1)),
+                (corners.shape[0], corners.shape[1], 1)
+            ).to(corners.device)
+        )
         corners_linearized = self._linearize_id(corners.reshape(-1, 3)).reshape(-1, 8).long()
         corners_idx = self.cold_vars["indexer"][corners_linearized.reshape(-1)].reshape(-1, 8)
 
         mask = torch.sum((corners_idx == -1), dim=-1) == 0
-
+        if corners_idx.shape[0] != mask.shape[0]:
+            print(corners_idx.shape[0], mask.shape[0])
+        # print(mask.shape)
+        # print(mask)
+        # print(corners_idx.shape)
+        # print("")
         corners_idx = corners_idx[mask]
         d = d[mask]
 

@@ -37,7 +37,6 @@ class Tracker(object):
         self.verbose = slam.verbose
         self.shared_c = slam.shared_c
         self.dense_map_dict = slam.dense_map_dict
-        print(11111)
         self.renderer = slam.renderer
         self.gt_c2w_list = slam.gt_c2w_list
         self.low_gpu_mem = slam.low_gpu_mem
@@ -109,7 +108,7 @@ class Tracker(object):
             batch_gt_color = batch_gt_color[inside_mask]
 
         ret = self.renderer.render_batch_ray(
-            self.c, self.dense_map_dict, self.decoders, batch_rays_d, batch_rays_o,  self.device, stage='color',  gt_depth=batch_gt_depth)
+            self.c, self.dense_map_dict_copy, self.decoders, batch_rays_d, batch_rays_o,  self.device, stage='color',  gt_depth=batch_gt_depth)
         depth, uncertainty, color = ret
 
         uncertainty = uncertainty.detach()
@@ -152,8 +151,9 @@ class Tracker(object):
                         cold_vars[key2] = torch.tensor(val2.detach().clone().cpu().numpy()).to(self.device)
                     else:
                         cold_vars[key2] = val2
-                dense_val = deepcopy(self.dense_map_dict[key])
-                dense_val.cold_vars = cold_vars
+                dense_val = copy.deepcopy(self.dense_map_dict[key])
+                for key2 in cold_vars.keys():
+                    dense_val.cold_vars[key2] = cold_vars[key2]
                 self.dense_map_dict_copy[key] = dense_val
             self.prev_mapping_idx = self.mapping_idx[0].clone()
 
@@ -203,7 +203,7 @@ class Tracker(object):
                 if not self.no_vis_on_first_frame:
                     # DONE: Change visualizer
                     self.visualizer.vis(
-                        idx, 0, gt_depth, gt_color, c2w, self.c, self.dense_map_dict, self.decoders)
+                        idx, 0, gt_depth, gt_color, c2w, self.c, self.dense_map_dict_copy, self.decoders)
 
             else:
                 gt_camera_tensor = get_tensor_from_camera(gt_c2w)
@@ -246,7 +246,7 @@ class Tracker(object):
 
                     # DONE: Change visualizer
                     self.visualizer.vis(
-                        idx, cam_iter, gt_depth, gt_color, camera_tensor, self.c, self.dense_map_dict, self.decoders)
+                        idx, cam_iter, gt_depth, gt_color, camera_tensor, self.c, self.dense_map_dict_copy, self.decoders)
 
                     loss = self.optimize_cam_in_batch(
                         camera_tensor, gt_color, gt_depth, self.tracking_pixels, optimizer_camera)
