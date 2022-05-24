@@ -78,13 +78,13 @@ class DenseIndexedMap:
             "indexer": torch.ones(np.product(self.n_xyz), device=device, dtype=torch.long) * -1,
             # -- Voxel Attributes --
             # 1. Latent Vector (Geometry)
-            "latent_vecs": torch.zeros((2048, self.latent_dim), dtype=torch.float32, device=device),
+            "latent_vecs": torch.empty((4096, self.latent_dim), dtype=torch.float32, device=device),
             # 2. Position
-            "latent_vecs_pos": torch.ones((2048,), dtype=torch.long, device=device) * -1,
+            "latent_vecs_pos": torch.ones((4096,), dtype=torch.long, device=device) * -1,
             # 3. Confidence on its geometry
-            "voxel_obs_count": torch.zeros((2048,), dtype=torch.float32, device=device),
+            "voxel_obs_count": torch.zeros((4096,), dtype=torch.float32, device=device),
             # 4. Optimized mark
-            "voxel_optimized": torch.zeros((2048,), dtype=torch.bool, device=device)
+            "voxel_optimized": torch.zeros((4096,), dtype=torch.bool, device=device)
         }
         for key in self.cold_vars.keys():
             if isinstance(self.cold_vars[key], torch.Tensor):
@@ -291,7 +291,7 @@ class DenseIndexedMap:
     def interpolate_bounded_point(self, xyz):
 
         xyz_normalized = (xyz - self.bound_min.unsqueeze(0)) / self.voxel_size
-        xyz_normalized = xyz_normalized.detach()
+        xyz_normalized = xyz_normalized
 
         grid = self.cold_vars["latent_vecs"]
 

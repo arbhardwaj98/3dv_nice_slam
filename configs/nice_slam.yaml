@@ -60,10 +60,10 @@ mapping:
   keyframe_every: 50
   mapping_window_size: 5
   w_color_loss: 0.2
-  frustum_feature_selection: True
+  frustum_feature_selection: False
   keyframe_selection_method: 'overlap'
   save_selected_keyframes_info: False
-  prune_min_vox_obs: 16
+  prune_min_vox_obs: 0
   ignore_count_th: 16
   lr_first_factor: 5
   lr_factor: 1
