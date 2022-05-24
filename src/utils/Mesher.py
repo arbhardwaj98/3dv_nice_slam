@@ -336,7 +336,7 @@ class Mesher(object):
             rets.append(ret)
 
             ret2[~mask, 3] = 100  # TODO: Why is this 100?
-            ret2[~voxel_mask, -1] = 0
+            ret2[~voxel_mask, -1] = -100
             rets2.append(ret2)
 
         ret = torch.cat(rets, dim=0)
