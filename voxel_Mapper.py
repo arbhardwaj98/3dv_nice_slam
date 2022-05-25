@@ -78,13 +78,13 @@ class DenseIndexedMap:
             "indexer": torch.ones(np.product(self.n_xyz), device=device, dtype=torch.long) * -1,
             # -- Voxel Attributes --
             # 1. Latent Vector (Geometry)
-            "latent_vecs": torch.empty((4096, self.latent_dim), dtype=torch.float32, device=device),
+            "latent_vecs": torch.empty((32768, self.latent_dim), dtype=torch.float32, device=device),
             # 2. Position
-            "latent_vecs_pos": torch.ones((4096,), dtype=torch.long, device=device) * -1,
+            "latent_vecs_pos": torch.ones((32768,), dtype=torch.long, device=device) * -1,
             # 3. Confidence on its geometry
-            "voxel_obs_count": torch.zeros((4096,), dtype=torch.float32, device=device),
+            "voxel_obs_count": torch.zeros((32768,), dtype=torch.float32, device=device),
             # 4. Optimized mark
-            "voxel_optimized": torch.zeros((4096,), dtype=torch.bool, device=device)
+            "voxel_optimized": torch.zeros((32768,), dtype=torch.bool, device=device)
         }
         for key in self.cold_vars.keys():
             if isinstance(self.cold_vars[key], torch.Tensor):
@@ -102,11 +102,18 @@ class DenseIndexedMap:
     # def __del__(self):
     #     self.optimize_process.kill()
 
-    def save(self, path):
+    def save(self, path, key):
         if not isinstance(path, Path):
             path = Path(path)
         with path.open('wb') as f:
-            torch.save(self.cold_vars, f)
+            print('bbbbb', str(key), str(torch.sum(self.cold_vars['indexer']!=-1)))
+            with open("replica.txt", "a+") as file_object:
+                file_object.seek(0)
+                data = file_object.read(100)
+                if len(data) > 0 :
+                    file_object.write("\n")
+                file_object.write('bbbbb' + str(key) + str(torch.sum(self.cold_vars['indexer']!=-1)))
+            torch.save(torch.sum(self.cold_vars['indexer']!=-1), f)
 
     def load(self, path):
         if not isinstance(path, Path):
@@ -175,8 +182,16 @@ class DenseIndexedMap:
         self.cold_vars['latent_vecs_pos'][new_id] = idx
         self.cold_vars['indexer'][idx] = new_id
 
-        # print(self.name, self.cold_vars['latent_vecs'].cpu().detach().shape)
-        # torch.save(self.cold_vars, 'output/Demo/'+key+'_'+str(self.store_idx)+'.pkl')
+        print('aaaaa', str(key), str(torch.sum(self.cold_vars['indexer']!=-1)))
+        with open("replica.txt", "a+") as file_object:
+            file_object.seek(0)
+            data = file_object.read(100)
+            if len(data) > 0 :
+                file_object.write("\n")
+            file_object.write('aaaaa'+ str(key)+ str(torch.sum(self.cold_vars['indexer']!=-1)))
+
+        torch.save(torch.sum(self.cold_vars['indexer']!=-1), '/home/ubuntu/code/3dv_nice_slam/output/Replica/'+key+'_'+str(self.store_idx)+'.pt')
+        
         self.store_idx = self.store_idx+1
 
     STATUS_CONF_BIT = 1 << 0  # 1
