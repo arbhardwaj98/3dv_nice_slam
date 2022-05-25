@@ -335,8 +335,8 @@ class Mesher(object):
             ret[~mask, 3] = 100  # TODO: Why is this 100?
             rets.append(ret)
 
-            ret2[~mask, 3] = 100  # TODO: Why is this 100?
             ret2[~voxel_mask, -1] = -100
+            ret2[~mask, 3] = 100  # TODO: Why is this 100?
             rets2.append(ret2)
 
         ret = torch.cat(rets, dim=0)
@@ -450,7 +450,6 @@ class Mesher(object):
                 #     keyframe_dict, self.scale)
                 z = []
                 mask = []
-                print(points.shape)
                 for i, pnts in enumerate(torch.split(points, self.points_batch_size, dim=0)):
                     mask.append(np.full(pnts.cpu().numpy().shape[0], True))
                     # mask.append(mesh_bound.contains(pnts.cpu().numpy()))

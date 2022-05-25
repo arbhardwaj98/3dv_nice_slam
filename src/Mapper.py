@@ -322,7 +322,7 @@ class Mapper(object):
                         fine_grid_para.append(dense_val)
                     elif key == 'grid_color':
                         color_grid_para.append(val)
-                        coarse_grid_para.append(dense_val)
+                        color_grid_para.append(dense_val)
 
                 else:
                     mask_unpermuted = self.get_mask_from_c2w(
@@ -652,6 +652,17 @@ class Mapper(object):
                 num_joint_iters = cfg['mapping']['iters_first']
 
             cur_c2w = self.estimate_c2w_list[idx].to(self.device)
+
+            cur_pc = get_pointcloud(
+                self.H, self.W, self.fx, self.fy, self.cx, self.cy,
+                cur_c2w.clone(), gt_depth, self.device)
+
+            for key in self.dense_map_dict.keys():
+                if not self.coarse_mapper and "coarse" not in key:
+                    self.dense_map_dict[key].integrate_keyframe(cur_pc, key)
+                elif self.coarse_mapper and "coarse" in key:
+                    self.dense_map_dict[key].integrate_keyframe(cur_pc, key)
+
             num_joint_iters = num_joint_iters // outer_joint_iters
             for outer_joint_iter in range(outer_joint_iters):
 
@@ -674,16 +685,6 @@ class Mapper(object):
                         # Keyframes are added here, new voxels should be initialized here using the keyframe
                         self.keyframe_dict.append({'gt_c2w': gt_c2w.cpu(), 'idx': idx, 'color': gt_color.cpu(
                         ), 'depth': gt_depth.cpu(), 'est_c2w': cur_c2w.clone()})
-
-                        cur_pc = get_pointcloud(
-                            self.H, self.W, self.fx, self.fy, self.cx, self.cy,
-                            cur_c2w.clone(), gt_depth, self.device)
-
-                        for key in self.dense_map_dict.keys():
-                            if not self.coarse_mapper and "coarse" not in key:
-                                self.dense_map_dict[key].integrate_keyframe(cur_pc, key)
-                            elif self.coarse_mapper and "coarse" in key:
-                                self.dense_map_dict[key].integrate_keyframe(cur_pc, key)
 
             if self.low_gpu_mem:
                 torch.cuda.empty_cache()
