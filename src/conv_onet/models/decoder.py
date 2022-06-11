@@ -382,18 +382,18 @@ class NICE(nn.Module):
             fine_occ, fine_occ2, voxel_mask = self.fine_decoder(p, dense_map_dict, c_grid)
             raw = torch.zeros(fine_occ.shape[0], 4).to(device).float()
             raw2 = torch.zeros(fine_occ2.shape[0], 4).to(device).float()
-            middle_occ, middle_occ2, voxel_mask = self.middle_decoder(p, dense_map_dict, c_grid)
+            middle_occ, middle_occ2, voxel_mask_middle = self.middle_decoder(p, dense_map_dict, c_grid)
             middle_occ = middle_occ.squeeze(0)
-            raw[..., -1] = fine_occ+middle_occ
+            raw[..., -1] = fine_occ + middle_occ
             middle_occ2 = middle_occ2.squeeze(0)
             raw2[..., -1] = fine_occ2 + middle_occ2
             return raw, raw2, voxel_mask
         elif stage == 'color':
             fine_occ, fine_occ2, voxel_mask = self.fine_decoder(p, dense_map_dict, c_grid)
-            raw, raw2, voxel_mask = self.color_decoder(p, dense_map_dict, c_grid)
-            middle_occ, middle_occ2, voxel_mask = self.middle_decoder(p, dense_map_dict, c_grid)
+            raw, raw2, voxel_mask_color = self.color_decoder(p, dense_map_dict, c_grid)
+            middle_occ, middle_occ2, voxel_mask_middle = self.middle_decoder(p, dense_map_dict, c_grid)
             middle_occ = middle_occ.squeeze(0)
-            raw[..., -1] = fine_occ+middle_occ
+            raw[..., -1] = fine_occ + middle_occ
             middle_occ2 = middle_occ2.squeeze(0)
             raw2[..., -1] = fine_occ2 + middle_occ2
             return raw, raw2, voxel_mask
