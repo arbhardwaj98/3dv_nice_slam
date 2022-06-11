@@ -140,8 +140,6 @@ class Tracker(object):
             if self.verbose:
                 print('Tracking: update the parameters from mapping')
             self.decoders = copy.deepcopy(self.shared_decoders).to(self.device)
-            assert torch.sum(self.dense_map_dict["grid_middle"].cold_vars["indexer"] != -1) <= \
-                   self.dense_map_dict["grid_middle"].cold_vars["latent_vecs"].shape[0]
             for key, val in self.shared_c.items():
                 val = val.clone().to(self.device)
                 self.c[key] = val
