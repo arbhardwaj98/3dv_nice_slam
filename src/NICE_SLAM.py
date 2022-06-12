@@ -312,7 +312,7 @@ class NICE_SLAM():
             p.join()
 
         for key in self.dense_map_dict.keys():
-            self.dense_map_dict[key].save('/home/ubuntu/code/3dv_nice_slam/output/Replica/'+key+'dense_map_dict_new.pt', key)
+            self.dense_map_dict[key].save(f"output/{self.dataset}/{key}_dense_map_dict.pt", key)
 
 
 # This part is required by torch.multiprocessing

@@ -87,7 +87,6 @@ class Mesher(object):
             forecast_mask = torch.zeros((points.shape[0])).bool().to(device)
             if get_mask_use_all_frames:
                 for i in range(0, idx + 1, 1):
-                    print(i)
                     c2w = estimate_c2w_list[i].cpu().numpy()
                     w2c = np.linalg.inv(c2w)
                     w2c = torch.from_numpy(w2c).to(device).float()
