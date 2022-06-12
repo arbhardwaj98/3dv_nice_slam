@@ -35,7 +35,6 @@ class Tracker(object):
         self.mesher = slam.mesher
         self.output = slam.output
         self.verbose = slam.verbose
-        self.shared_c = slam.shared_c
         self.dense_map_dict = slam.dense_map_dict
         self.renderer = slam.renderer
         self.gt_c2w_list = slam.gt_c2w_list
@@ -108,7 +107,7 @@ class Tracker(object):
             batch_gt_color = batch_gt_color[inside_mask]
 
         ret = self.renderer.render_batch_ray(
-            self.c, self.dense_map_dict_copy, self.decoders, batch_rays_d, batch_rays_o,  self.device, stage='color',  gt_depth=batch_gt_depth)
+            self.dense_map_dict_copy, self.decoders, batch_rays_d, batch_rays_o,  self.device, stage='color',  gt_depth=batch_gt_depth)
         depth, uncertainty, color = ret
 
         uncertainty = uncertainty.detach()
@@ -140,9 +139,7 @@ class Tracker(object):
             if self.verbose:
                 print('Tracking: update the parameters from mapping')
             self.decoders = copy.deepcopy(self.shared_decoders).to(self.device)
-            for key, val in self.shared_c.items():
-                val = val.clone().to(self.device)
-                self.c[key] = val
+            for key in self.dense_map_dict.keys():
                 cold_vars = {}
                 for key2, val2 in self.dense_map_dict[key].cold_vars.items():
                     if isinstance(val2, torch.Tensor):
@@ -157,7 +154,6 @@ class Tracker(object):
 
     def run(self):
         device = self.device
-        self.c = {}
         self.dense_map_dict_copy = {}
         if self.verbose:
             pbar = self.frame_loader
@@ -201,7 +197,7 @@ class Tracker(object):
                 if not self.no_vis_on_first_frame:
                     # DONE: Change visualizer
                     self.visualizer.vis(
-                        idx, 0, gt_depth, gt_color, c2w, self.c, self.dense_map_dict_copy, self.decoders)
+                        idx, 0, gt_depth, gt_color, c2w, self.dense_map_dict_copy, self.decoders)
 
             else:
                 gt_camera_tensor = get_tensor_from_camera(gt_c2w)
@@ -244,7 +240,7 @@ class Tracker(object):
 
                     # DONE: Change visualizer
                     self.visualizer.vis(
-                        idx, cam_iter, gt_depth, gt_color, camera_tensor, self.c, self.dense_map_dict_copy, self.decoders)
+                        idx, cam_iter, gt_depth, gt_color, camera_tensor, self.dense_map_dict_copy, self.decoders)
 
                     loss = self.optimize_cam_in_batch(
                         camera_tensor, gt_color, gt_depth, self.tracking_pixels, optimizer_camera)

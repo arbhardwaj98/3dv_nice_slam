@@ -21,7 +21,7 @@ class Visualizer(object):
         self.verbose = verbose
         os.makedirs(f'{vis_dir}', exist_ok=True)
 
-    def vis(self, idx, iter, gt_depth, gt_color, c2w_or_camera_tensor, c,
+    def vis(self, idx, iter, gt_depth, gt_color, c2w_or_camera_tensor,
             dense_map_dict, decoders):
         """
         Visualization of depth, color images and save to file.
@@ -33,7 +33,7 @@ class Visualizer(object):
             gt_color (tensor): ground truth color image of the current frame.
             c2w_or_camera_tensor (tensor): camera pose, represented in 
                 camera to world matrix or quaternion and translation tensor.
-            c (dicts): feature grids.
+            dense_map_dict (dicts): feature grids.
             decoders (nn.module): decoders.
         """
         with torch.no_grad():
@@ -52,7 +52,6 @@ class Visualizer(object):
 
                 # DONE: Change map here
                 depth, uncertainty, color = self.renderer.render_img(
-                    c,
                     dense_map_dict,
                     decoders,
                     c2w,

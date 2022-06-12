@@ -20,7 +20,7 @@ class Renderer(object):
         self.H, self.W, self.fx, self.fy, self.cx, self.cy = slam.H, slam.W, slam.fx, slam.fy, slam.cx, slam.cy
 
     # SWITCH: Switch output of this function
-    def eval_points(self, p, decoders, c=None, dense_map_dict=None, stage='color', device='cuda:0'):
+    def eval_points(self, p, decoders, dense_map_dict=None, stage='color', device='cuda:0'):
         """
         Evaluates the occupancy and/or color value for the points.
 
@@ -35,10 +35,8 @@ class Renderer(object):
             ret (tensor): occupancy (and color) value of input points.
         """
 
-        dense_map = dense_map_dict["grid_" + stage]
         p_split = torch.split(p, self.points_batch_size)
         bound = self.bound
-        rets = []
         rets2 = []
         for pi in p_split:
             # mask for points out of bound
@@ -47,51 +45,31 @@ class Renderer(object):
             mask_z = (pi[:, 2] < bound[2][1]) & (pi[:, 2] > bound[2][0])
             mask = mask_x & mask_y & mask_z
 
-            # DONE:
-            '''
-            Normalize points.
-            Finding mask for points which lie inside the initialized voxels.
-            Interpolating points where mask with the initialized voxels
-            Decoding points to obtain occupancy and color.
-            Setting occupancy where not mask to zero.
-            What happens if point not inside initialized voxels. Should its occupancy be set to zero?
-            '''
-
             pi = pi.unsqueeze(0)
 
             if self.nice:
-                ret, ret2, voxel_mask = decoders(pi, c_grid=c, dense_map_dict=dense_map_dict, stage=stage)
+                ret2, voxel_mask = decoders(pi, dense_map_dict=dense_map_dict, stage=stage)
             else:
-                ret = decoders(pi, c_grid=None)
-                ret2 = None
+                ret2 = decoders(pi, c_grid=None)
 
-            ret = ret.squeeze(0)
             ret2 = ret2.squeeze(0)
-
-            if len(ret.shape) == 1 and ret.shape[0] == 4:
-                ret = ret.unsqueeze(0)
 
             if len(ret2.shape) == 1 and ret2.shape[0] == 4:
                 ret2 = ret2.unsqueeze(0)
-
-            ret[~mask, 3] = 100  # TODO: Why is this 100?
-            rets.append(ret)
 
             ret2[~voxel_mask, -1] = -100
             ret2[~mask, 3] = 100  # TODO: Why is this 100?
             rets2.append(ret2)
 
-        ret = torch.cat(rets, dim=0)
         ret2 = torch.cat(rets2, dim=0)
 
-        return ret, ret2
+        return ret2
 
-    def render_batch_ray(self, c, dense_map_dict, decoders, rays_d, rays_o, device, stage, gt_depth=None):
+    def render_batch_ray(self, dense_map_dict, decoders, rays_d, rays_o, device, stage, gt_depth=None):
         """
         Render color, depth and uncertainty of a batch of rays.
 
         Args:
-            c (dict): feature grids.
             dense_map_dict: Dictionary with dense map data structure
             decoders (nn.module): decoders.
             rays_d (tensor, N*3): rays direction.
@@ -203,7 +181,7 @@ class Renderer(object):
 
         # DONE: Changed eval_points function
         # Passes grid to decoders, check decoders.
-        _, raw = self.eval_points(pointsf, decoders, c, dense_map_dict, stage, device)
+        raw = self.eval_points(pointsf, decoders, dense_map_dict, stage, device)
         raw = raw.reshape(N_rays, N_samples+N_surface, -1)
 
         # convert raw occupancy values to outputs
@@ -219,7 +197,7 @@ class Renderer(object):
             pts = rays_o[..., None, :] + \
                 rays_d[..., None, :] * z_vals[..., :, None]
             pts = pts.reshape(-1, 3)
-            _, raw = self.eval_points(pts, decoders, c, dense_map_dict, stage, device)
+            raw = self.eval_points(pts, decoders, dense_map_dict, stage, device)
             raw = raw.reshape(N_rays, N_samples+N_importance+N_surface, -1)
 
             depth, uncertainty, color, weights = raw2outputs_nerf_color(
@@ -228,12 +206,12 @@ class Renderer(object):
 
         return depth, uncertainty, color
 
-    def render_img(self, c, dense_map_dict, decoders, c2w, device, stage, gt_depth=None):
+    def render_img(self, dense_map_dict, decoders, c2w, device, stage, gt_depth=None):
         """
         Renders out depth, uncertainty, and color images.
 
         Args:
-            c (dict): feature grids.
+            dense_map_dict (dict): feature grids.
             decoders (nn.module): decoders.
             c2w (tensor): camera to world matrix of current frame.
             device (str): device name to compute on.
@@ -265,11 +243,11 @@ class Renderer(object):
                 rays_o_batch = rays_o[i:i+ray_batch_size]
                 if gt_depth is None:
                     ret = self.render_batch_ray(
-                        c, dense_map_dict, decoders, rays_d_batch, rays_o_batch, device, stage, gt_depth=None)
+                        dense_map_dict, decoders, rays_d_batch, rays_o_batch, device, stage, gt_depth=None)
                 else:
                     gt_depth_batch = gt_depth[i:i+ray_batch_size]
                     ret = self.render_batch_ray(
-                        c, dense_map_dict, decoders, rays_d_batch, rays_o_batch, device, stage, gt_depth=gt_depth_batch)
+                        dense_map_dict, decoders, rays_d_batch, rays_o_batch, device, stage, gt_depth=gt_depth_batch)
 
                 depth, uncertainty, color = ret
                 depth_list.append(depth.double())
@@ -286,13 +264,13 @@ class Renderer(object):
             return depth, uncertainty, color
 
     # this is only for imap*
-    def regulation(self, c, dense_map_dict, decoders, rays_d, rays_o, gt_depth, device, stage='color'):
+    def regulation(self, dense_map_dict, decoders, rays_d, rays_o, gt_depth, device, stage='color'):
         """
         Regulation that disencourage any geometry from the camera center to 0.85*depth.
         For imap, the geometry will not be as good if this loss is not added.
 
         Args:
-            c (dict): feature grids.
+            dense_map_dict (dict): feature grids.
             decoders (nn.module): decoders.
             rays_d (tensor, N*3): rays direction.
             rays_o (tensor, N*3): rays origin.
@@ -322,6 +300,6 @@ class Renderer(object):
         pts = rays_o[..., None, :] + rays_d[..., None, :] * \
             z_vals[..., :, None]  # (N_rays, N_samples, 3)
         pointsf = pts.reshape(-1, 3)
-        _, raw = self.eval_points(pointsf, decoders, c, dense_map_dict, stage, device)
+        raw = self.eval_points(pointsf, decoders, dense_map_dict, stage, device)
         sigma = raw[:, -1]
         return sigma
