@@ -66,6 +66,7 @@ class DenseIndexedMap:
         # Directly modifiable from outside.
         self.extract_mesh_std_range = None
 
+        # TODO: Make this 27 instead of 6
         self.mesh_update_affected = [torch.tensor([t], device=self.device)
                                      for t in [[-1, 0, 0], [1, 0, 0],
                                                [0, -1, 0], [0, 1, 0],
@@ -342,12 +343,6 @@ class DenseIndexedMap:
         corners_idx = self.cold_vars["indexer"][corners_linearized.reshape(-1)].reshape(-1, 8)
 
         mask = torch.sum((corners_idx == -1), dim=-1) == 0
-        if corners_idx.shape[0] != mask.shape[0]:
-            print(corners_idx.shape[0], mask.shape[0])
-        # print(mask.shape)
-        # print(mask)
-        # print(corners_idx.shape)
-        # print("")
         corners_idx = corners_idx[mask]
         d = d[mask]
 
