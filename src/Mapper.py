@@ -1,3 +1,10 @@
+"""
+Replaced grid based map with dense voxel hashing based map
+Uses dense map to store and optimize latent representations
+Used point clouds to initialize voxels near point clusters.
+"""
+
+
 import os
 import time
 

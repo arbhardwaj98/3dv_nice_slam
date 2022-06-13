@@ -1,3 +1,9 @@
+"""
+Updated NICE-SLAM decoder. Retrieves latent representations
+from dense voxel array instead of grid based voxel map.
+"""
+
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

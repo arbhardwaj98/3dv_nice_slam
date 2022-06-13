@@ -1,3 +1,7 @@
+"""
+Replaced grid based map with dense voxel hashing based map
+"""
+
 from src.Tracker import Tracker
 from src.utils.Logger import Logger
 from src.utils.Renderer import Renderer

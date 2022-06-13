@@ -1,3 +1,10 @@
+"""
+Implements a voxel hashing based dense map data structure.
+Adapted from Di-Fusion's implementation of voxel hashing.
+https://github.com/huangjh-pub/di-fusion/tree/merged/pytorch
+"""
+
+
 import functools
 from pathlib import Path
 

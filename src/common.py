@@ -1,3 +1,9 @@
+"""
+Added method to convert depth images to point cloud
+Used for voxel initializations near point clusters.
+"""
+
+
 import pickle
 
 import numpy as np
