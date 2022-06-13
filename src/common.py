@@ -282,13 +282,15 @@ def get_pointcloud(H, W, fx, fy, cx, cy, c2w, depth, device):
     i = i.t()  # transpose
     j = j.t()
     dirs = torch.stack([(i-cx)/fx, -(j-cy)/fy, -torch.ones_like(i)], -1).to(device)
-    pc_c = (dirs * depth.unsqueeze(2)) / dirs[:, :, 2].unsqueeze(2)
+    pc_c = (dirs * depth.unsqueeze(2))
     pc_c = pc_c.reshape(H, W, 1, 3)
     pc_w = torch.sum(pc_c * c2w[:3, :3], -1)
     rays_o = c2w[:3, -1].expand(pc_w.shape)
     pc = pc_w + rays_o
 
-    return pc.reshape(-1, 3)
+    pc = pc.reshape(-1, 3)
+    pc_mask = torch.sum(torch.abs(pc - rays_o.reshape(-1, 3)), dim=-1) > 1e-3
+    return pc[pc_mask]
 
 
 def normalize_3d_coordinate(p, bound):

@@ -351,7 +351,7 @@ class NICE_SLAM():
             p.join()
 
         for key in self.dense_map_dict.keys():
-            self.dense_map_dict[key].save(f"output/{self.dataset}/{key}_dense_map_dict.pt", key)
+            self.dense_map_dict[key].save(f"output/Demo/{key}_dense_map_dict.pt", key)
 
 
 # This part is required by torch.multiprocessing
