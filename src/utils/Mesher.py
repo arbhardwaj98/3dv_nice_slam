@@ -87,7 +87,6 @@ class Mesher(object):
             forecast_mask = torch.zeros((points.shape[0])).bool().to(device)
             if get_mask_use_all_frames:
                 for i in range(0, idx + 1, 1):
-                    print(i)
                     c2w = estimate_c2w_list[i].cpu().numpy()
                     w2c = np.linalg.inv(c2w)
                     w2c = torch.from_numpy(w2c).to(device).float()
@@ -277,16 +276,16 @@ class Mesher(object):
         return_mesh = trimesh.Trimesh(vertices=points, faces=faces)
         return return_mesh
 
-    def eval_points(self, p, decoders, c=None, stage='color', device='cuda:0'):
+    def eval_points(self, p, decoders, dense_map_dict=None, stage='color', device='cuda:0'):
         """
         Evaluates the occupancy and/or color value for the points.
 
         Args:
-            p (tensor, N*3): point coordinates.
-            decoders (nn.module decoders): decoders.
-            c (dicts, optional): feature grids. Defaults to None.
-            stage (str, optional): query stage, corresponds to different levels. Defaults to 'color'.
-            device (str, optional): device name to compute on. Defaults to 'cuda:0'.
+            p (tensor, N*3): Point coordinates.
+            decoders (nn.module decoders): Decoders.
+            dense_map_dict (dicts, optional): Feature grids. Defaults to None.
+            stage (str, optional): Query stage, corresponds to different levels. Defaults to 'color'.
+            device (str, optional): CUDA device. Defaults to 'cuda:0'.
 
         Returns:
             ret (tensor): occupancy (and color) value of input points.
@@ -294,7 +293,7 @@ class Mesher(object):
 
         p_split = torch.split(p, self.points_batch_size)
         bound = self.bound
-        rets = []
+        rets2 = []
         for pi in p_split:
             # mask for points out of bound
             mask_x = (pi[:, 0] < bound[0][1]) & (pi[:, 0] > bound[0][0])
@@ -303,19 +302,24 @@ class Mesher(object):
             mask = mask_x & mask_y & mask_z
 
             pi = pi.unsqueeze(0)
+
             if self.nice:
-                ret = decoders(pi, c_grid=c, stage=stage)
+                ret2, voxel_mask = decoders(pi, dense_map_dict=dense_map_dict, stage=stage)
             else:
-                ret = decoders(pi, c_grid=None)
-            ret = ret.squeeze(0)
-            if len(ret.shape) == 1 and ret.shape[0] == 4:
-                ret = ret.unsqueeze(0)
+                ret2 = decoders(pi, c_grid=None)
 
-            ret[~mask, 3] = 100
-            rets.append(ret)
+            ret2 = ret2.squeeze(0)
 
-        ret = torch.cat(rets, dim=0)
-        return ret
+            if len(ret2.shape) == 1 and ret2.shape[0] == 4:
+                ret2 = ret2.unsqueeze(0)
+
+            ret2[~voxel_mask, -1] = -100
+            ret2[~mask, 3] = 100
+            rets2.append(ret2)
+
+        ret2 = torch.cat(rets2, dim=0)
+
+        return ret2
 
     def get_grid_uniform(self, resolution):
         """
@@ -345,9 +349,10 @@ class Mesher(object):
 
         return {"grid_points": grid_points, "xyz": [x, y, z]}
 
+    # DONE: Changed this function, has occurences of eval_points
     def get_mesh(self,
                  mesh_out_file,
-                 c,
+                 dense_map_dict,
                  decoders,
                  keyframe_dict,
                  estimate_c2w_list,
@@ -362,7 +367,7 @@ class Mesher(object):
 
         Args:
             mesh_out_file (str): output mesh filename.
-            c (dicts): feature grids.
+            dense_map_dict (dicts): feature grids.
             decoders (nn.module): decoders.
             keyframe_dict (list):  list of keyframe info.
             estimate_c2w_list (tensor): estimated camera pose.
@@ -397,7 +402,7 @@ class Mesher(object):
                                     self.points_batch_size,
                                     dim=0)):
                     z_forecast.append(
-                        self.eval_points(pnts, decoders, c, 'coarse',
+                        self.eval_points(pnts, decoders, dense_map_dict, 'coarse',
                                          device).cpu().numpy()[:, -1])
                 z_forecast = np.concatenate(z_forecast, axis=0)
                 z_forecast += 0.2
@@ -407,7 +412,7 @@ class Mesher(object):
                         torch.split(seen_points, self.points_batch_size,
                                     dim=0)):
                     z_seen.append(
-                        self.eval_points(pnts, decoders, c, 'fine',
+                        self.eval_points(pnts, decoders, dense_map_dict, 'fine',
                                          device).cpu().numpy()[:, -1])
                 z_seen = np.concatenate(z_seen, axis=0)
 
@@ -421,12 +426,11 @@ class Mesher(object):
                     keyframe_dict, self.scale)
                 z = []
                 mask = []
-                print(points.shape)
                 for i, pnts in enumerate(torch.split(points, self.points_batch_size, dim=0)):
                     mask.append(mesh_bound.contains(pnts.cpu().numpy()))
                 mask = np.concatenate(mask, axis=0)
                 for i, pnts in enumerate(torch.split(points, self.points_batch_size, dim=0)):
-                    z.append(self.eval_points(pnts, decoders, c, 'fine',
+                    z.append(self.eval_points(pnts, decoders, dense_map_dict, 'fine',
                                               device).cpu().numpy()[:, -1])
 
                 z = np.concatenate(z, axis=0)
@@ -518,7 +522,7 @@ class Mesher(object):
                     for i, pnts in enumerate(
                             torch.split(points, self.points_batch_size, dim=0)):
                         z_color = self.eval_points(
-                            pnts.to(device).float(), decoders, c, 'color',
+                            pnts.to(device).float(), decoders, dense_map_dict, 'color',
                             device).cpu()[..., :3]
                         z.append(z_color)
                     z = torch.cat(z, axis=0)
@@ -547,7 +551,7 @@ class Mesher(object):
                         rays_o_batch = rays_o[i:i+batch_size]
                         gt_depth_batch = gt_depth[i:i+batch_size]
                         depth, uncertainty, color = self.renderer.render_batch_ray(
-                            c, decoders, rays_d_batch, rays_o_batch, device, 
+                            decoders, rays_d_batch, rays_o_batch, device,
                             stage='color', gt_depth=gt_depth_batch)
                         color_list.append(color)
                     color = torch.cat(color_list, dim=0)

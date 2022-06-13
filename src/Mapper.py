@@ -1,3 +1,10 @@
+"""
+Replaced grid based map with dense voxel hashing based map
+Uses dense map to store and optimize latent representations
+Used point clouds to initialize voxels near point clusters.
+"""
+
+
 import os
 import time
 
@@ -8,7 +15,7 @@ from colorama import Fore, Style
 from torch.autograd import Variable
 
 from src.common import (get_camera_from_tensor, get_samples,
-                        get_tensor_from_camera, random_select)
+                        get_tensor_from_camera, random_select, get_pointcloud)
 from src.utils.datasets import get_dataset
 from src.utils.Visualizer import Visualizer
 
@@ -28,7 +35,7 @@ class Mapper(object):
 
         self.idx = slam.idx
         self.nice = slam.nice
-        self.c = slam.shared_c
+        self.dense_map_dict = slam.dense_map_dict       # New dict for dense maps
         self.bound = slam.bound
         self.logger = slam.logger
         self.mesher = slam.mesher
@@ -241,7 +248,7 @@ class Mapper(object):
             cur_gt_depth (tensor): gt_depth image of the current camera.
             gt_cur_c2w (tensor): groundtruth camera to world matrix corresponding to current frame.
             keyframe_dict (list): list of keyframes info dictionary.
-            keyframe_list (list): list ofkeyframe index.
+            keyframe_list (list): list of keyframe index.
             cur_c2w (tensor): the estimated camera to world matrix of current frame. 
 
         Returns:
@@ -249,7 +256,7 @@ class Mapper(object):
         """
         H, W, fx, fy, cx, cy = self.H, self.W, self.fx, self.fy, self.cx, self.cy
         device = self.device
-        c = self.c
+        dense_map_dict = self.dense_map_dict
         cfg = self.cfg
         bottom = torch.from_numpy(np.array([0, 0, 0, 1.]).reshape(
             [1, 4])).type(torch.float32).to(device)
@@ -297,41 +304,49 @@ class Mapper(object):
         gt_depth_np = cur_gt_depth.cpu().numpy()
         if self.nice:
             if self.frustum_feature_selection:
-                masked_c_grad = {}
+                dense_masked_c_grad = {}
                 mask_c2w = cur_c2w
-            for key, val in c.items():
+            for key in self.dense_map_dict.keys():
+                dense_val = dense_map_dict[key].cold_vars["latent_vecs"]
+                dense_indexer = dense_map_dict[key].cold_vars["indexer"]
                 if not self.frustum_feature_selection:
-                    val = Variable(val.to(device), requires_grad=True)
-                    c[key] = val
+                    dense_val = Variable(dense_val.to(device), requires_grad=True)
+                    dense_map_dict[key].cold_vars["latent_vecs"] = dense_val
+
                     if key == 'grid_coarse':
-                        coarse_grid_para.append(val)
+                        coarse_grid_para.append(dense_val)
                     elif key == 'grid_middle':
-                        middle_grid_para.append(val)
+                        middle_grid_para.append(dense_val)
                     elif key == 'grid_fine':
-                        fine_grid_para.append(val)
+                        fine_grid_para.append(dense_val)
                     elif key == 'grid_color':
-                        color_grid_para.append(val)
+                        color_grid_para.append(dense_val)
 
                 else:
-                    mask = self.get_mask_from_c2w(
-                        mask_c2w, key, val.shape[2:], gt_depth_np)
-                    mask = torch.from_numpy(mask).permute(2, 1, 0).unsqueeze(
-                        0).unsqueeze(0).repeat(1, val.shape[1], 1, 1, 1)
-                    val = val.to(device)
-                    # val_grad is the optimizable part, other parameters will be fixed
-                    val_grad = val[mask].clone()
-                    val_grad = Variable(val_grad.to(
-                        device), requires_grad=True)
-                    masked_c_grad[key] = val_grad
-                    masked_c_grad[key + 'mask'] = mask
+                    mask_unpermuted = self.get_mask_from_c2w(
+                        mask_c2w, key, dense_map_dict[key].n_xyz[::-1], gt_depth_np
+                    )
+
+                    dense_val = dense_val.to(device)
+
+                    mask_unpermuted_voxels = torch.nonzero(mask_unpermuted)
+                    dense_val_grad = dense_val[
+                        dense_indexer[
+                            dense_map_dict[key]._linearize_id(mask_unpermuted_voxels)
+                        ]
+                    ].clone()
+                    dense_val_grad = Variable(dense_val_grad.to(device), requires_grad=True)
+                    dense_masked_c_grad[key] = dense_val_grad
+                    dense_masked_c_grad[key + 'mask'] = mask_unpermuted_voxels
+
                     if key == 'grid_coarse':
-                        coarse_grid_para.append(val_grad)
+                        coarse_grid_para.append(dense_val_grad)
                     elif key == 'grid_middle':
-                        middle_grid_para.append(val_grad)
+                        middle_grid_para.append(dense_val_grad)
                     elif key == 'grid_fine':
-                        fine_grid_para.append(val_grad)
+                        fine_grid_para.append(dense_val_grad)
                     elif key == 'grid_color':
-                        color_grid_para.append(val_grad)
+                        color_grid_para.append(dense_val_grad)
 
         if self.nice:
             if not self.fix_fine:
@@ -392,14 +407,19 @@ class Mapper(object):
         for joint_iter in range(num_joint_iters):
             if self.nice:
                 if self.frustum_feature_selection:
-                    for key, val in c.items():
-                        if (self.coarse_mapper and 'coarse' in key) or \
-                                ((not self.coarse_mapper) and ('coarse' not in key)):
-                            val_grad = masked_c_grad[key]
-                            mask = masked_c_grad[key + 'mask']
-                            val = val.to(device)
-                            val[mask] = val_grad
-                            c[key] = val
+                    for key in dense_map_dict.keys():
+                        if ((self.coarse_mapper and 'coarse' in key) or
+                                ((not self.coarse_mapper) and ('coarse' not in key))):
+
+                            dense_val_grad = dense_masked_c_grad[key]
+                            mask_unpermuted_voxels = dense_masked_c_grad[key + 'mask']
+                            dense_val = dense_map_dict[key].cold_vars["latent_vecs"].to(device)
+                            dense_val[
+                                dense_map_dict[key].cold_vars["indexer"][
+                                    dense_map_dict[key]._linearize_id(mask_unpermuted_voxels)
+                                ]
+                            ] = dense_val_grad
+                            dense_map_dict[key].cold_vars["latent_vecs"] = dense_val
 
                 if self.coarse_mapper:
                     self.stage = 'coarse'
@@ -426,7 +446,7 @@ class Mapper(object):
 
             if (not (idx == 0 and self.no_vis_on_first_frame)) and ('Demo' not in self.output):
                 self.visualizer.vis(
-                    idx, joint_iter, cur_gt_depth, cur_gt_color, cur_c2w, self.c, self.decoders)
+                    idx, joint_iter, cur_gt_depth, cur_gt_color, cur_c2w, self.dense_map_dict, self.decoders)
 
             optimizer.zero_grad()
             batch_rays_d_list = []
@@ -472,15 +492,15 @@ class Mapper(object):
                 with torch.no_grad():
                     det_rays_o = batch_rays_o.clone().detach().unsqueeze(-1)  # (N, 3, 1)
                     det_rays_d = batch_rays_d.clone().detach().unsqueeze(-1)  # (N, 3, 1)
-                    t = (self.bound.unsqueeze(0).to(
-                        device) - det_rays_o) / det_rays_d
+                    t = (self.bound.unsqueeze(0).to(device) - det_rays_o) / det_rays_d
                     t, _ = torch.min(torch.max(t, dim=2)[0], dim=1)
                     inside_mask = t >= batch_gt_depth
                 batch_rays_d = batch_rays_d[inside_mask]
                 batch_rays_o = batch_rays_o[inside_mask]
                 batch_gt_depth = batch_gt_depth[inside_mask]
                 batch_gt_color = batch_gt_color[inside_mask]
-            ret = self.renderer.render_batch_ray(c, self.decoders, batch_rays_d,
+
+            ret = self.renderer.render_batch_ray(dense_map_dict, self.decoders, batch_rays_d,
                                                  batch_rays_o, device, self.stage,
                                                  gt_depth=None if self.coarse_mapper else batch_gt_depth)
             depth, uncertainty, color = ret
@@ -497,7 +517,7 @@ class Mapper(object):
             regulation = (not self.occupancy)
             if regulation:
                 point_sigma = self.renderer.regulation(
-                    c, self.decoders, batch_rays_d, batch_rays_o, batch_gt_depth, device, self.stage)
+                    dense_map_dict, self.decoders, batch_rays_d, batch_rays_o, batch_gt_depth, device, self.stage)
                 regulation_loss = torch.abs(point_sigma).sum()
                 loss += 0.0005 * regulation_loss
 
@@ -510,14 +530,19 @@ class Mapper(object):
 
             # put selected and updated features back to the grid
             if self.nice and self.frustum_feature_selection:
-                for key, val in c.items():
+                for key in dense_map_dict.keys():
                     if (self.coarse_mapper and 'coarse' in key) or \
                             ((not self.coarse_mapper) and ('coarse' not in key)):
-                        val_grad = masked_c_grad[key]
-                        mask = masked_c_grad[key + 'mask']
-                        val = val.detach()
-                        val[mask] = val_grad.clone().detach()
-                        c[key] = val
+
+                        dense_val_grad = dense_masked_c_grad[key]
+                        mask_unpermuted_voxels = dense_masked_c_grad[key + 'mask']
+                        dense_val = dense_map_dict[key].cold_vars["latent_vecs"].detach()
+                        dense_val[
+                            dense_map_dict[key].cold_vars["indexer"][
+                                dense_map_dict[key]._linearize_id(mask_unpermuted_voxels)
+                            ]
+                        ] = dense_val_grad.clone().detach()
+                        dense_map_dict[key].cold_vars["latent_vecs"] = dense_val
 
         if self.BA:
             # put the updated camera poses back
@@ -545,6 +570,21 @@ class Mapper(object):
         idx, gt_color, gt_depth, gt_c2w = self.frame_reader[0]
 
         self.estimate_c2w_list[0] = gt_c2w.cpu()
+
+        cur_c2w = self.estimate_c2w_list[idx].to(self.device)
+
+        # Get point cloud from depth image and current camera pose estimate
+        cur_pc = get_pointcloud(
+            self.H, self.W, self.fx, self.fy, self.cx, self.cy,
+            cur_c2w.clone(), gt_depth, self.device)
+
+        # Initialize new voxels for the current point cloud
+        for key in self.dense_map_dict.keys():
+            if not self.coarse_mapper and "coarse" not in key:
+                self.dense_map_dict[key].integrate_keyframe(cur_pc, key)
+            elif self.coarse_mapper and "coarse" in key:
+                self.dense_map_dict[key].integrate_keyframe(cur_pc, key)
+
         init = True
         prev_idx = -1
         while (1):
@@ -597,6 +637,19 @@ class Mapper(object):
                 num_joint_iters = cfg['mapping']['iters_first']
 
             cur_c2w = self.estimate_c2w_list[idx].to(self.device)
+
+            # Get point cloud from depth image and current camera pose estimate
+            cur_pc = get_pointcloud(
+                self.H, self.W, self.fx, self.fy, self.cx, self.cy,
+                cur_c2w.clone(), gt_depth, self.device)
+
+            # Initialize new voxels for the current point cloud
+            for key in self.dense_map_dict.keys():
+                if not self.coarse_mapper and "coarse" not in key:
+                    self.dense_map_dict[key].integrate_keyframe(cur_pc, key)
+                elif self.coarse_mapper and "coarse" in key:
+                    self.dense_map_dict[key].integrate_keyframe(cur_pc, key)
+
             num_joint_iters = num_joint_iters // outer_joint_iters
             for outer_joint_iter in range(outer_joint_iters):
 
@@ -636,14 +689,14 @@ class Mapper(object):
 
                 if (idx % self.mesh_freq == 0) and (not (idx == 0 and self.no_mesh_on_first_frame)):
                     mesh_out_file = f'{self.output}/mesh/{idx:05d}_mesh.ply'
-                    self.mesher.get_mesh(mesh_out_file, self.c, self.decoders, self.keyframe_dict,
+                    self.mesher.get_mesh(mesh_out_file, self.dense_map_dict, self.decoders, self.keyframe_dict,
                                          self.estimate_c2w_list,
                                          idx, self.device, show_forecast=self.mesh_coarse_level,
                                          clean_mesh=self.clean_mesh, get_mask_use_all_frames=False)
 
                 if idx == self.n_img - 1:
                     mesh_out_file = f'{self.output}/mesh/final_mesh.ply'
-                    self.mesher.get_mesh(mesh_out_file, self.c, self.decoders, self.keyframe_dict,
+                    self.mesher.get_mesh(mesh_out_file, self.dense_map_dict, self.decoders, self.keyframe_dict,
                                          self.estimate_c2w_list,
                                          idx, self.device, show_forecast=self.mesh_coarse_level,
                                          clean_mesh=self.clean_mesh, get_mask_use_all_frames=False)
@@ -651,7 +704,7 @@ class Mapper(object):
                         f"cp {mesh_out_file} {self.output}/mesh/{idx:05d}_mesh.ply")
                     if self.eval_rec:
                         mesh_out_file = f'{self.output}/mesh/final_mesh_eval_rec.ply'
-                        self.mesher.get_mesh(mesh_out_file, self.c, self.decoders, self.keyframe_dict,
+                        self.mesher.get_mesh(mesh_out_file, self.dense_map_dict, self.decoders, self.keyframe_dict,
                                              self.estimate_c2w_list, idx, self.device, show_forecast=False,
                                              clean_mesh=self.clean_mesh, get_mask_use_all_frames=True)
                     break

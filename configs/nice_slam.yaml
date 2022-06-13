@@ -60,18 +60,20 @@ mapping:
   keyframe_every: 50
   mapping_window_size: 5
   w_color_loss: 0.2
-  frustum_feature_selection: True
+  frustum_feature_selection: False
   keyframe_selection_method: 'overlap'
   save_selected_keyframes_info: False
+  prune_min_vox_obs: 0
+  ignore_count_th: 16
   lr_first_factor: 5
   lr_factor: 1
   pixels: 1000
   iters_first: 1500
-  iters: 60
+  iters: 150
   stage:
     coarse:
       decoders_lr: 0.0
-      coarse_lr: 0.001
+      coarse_lr: 0.005
       middle_lr: 0.0
       fine_lr: 0.0
       color_lr: 0.0
@@ -84,15 +86,15 @@ mapping:
     fine:
       decoders_lr: 0.0
       coarse_lr: 0.0
-      middle_lr: 0.005
-      fine_lr: 0.005
+      middle_lr: 0.015
+      fine_lr: 0.015
       color_lr: 0.0
     color:
-      decoders_lr: 0.005
+      decoders_lr: 0.015
       coarse_lr: 0.0
-      middle_lr: 0.005
-      fine_lr: 0.005
-      color_lr: 0.005
+      middle_lr: 0.015
+      fine_lr: 0.015
+      color_lr: 0.015
 cam:
   H: 680
   W: 1200
