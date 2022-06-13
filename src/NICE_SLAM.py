@@ -3,7 +3,7 @@ from src.utils.Logger import Logger
 from src.utils.Renderer import Renderer
 from src.utils.Mesher import Mesher
 from src.Mapper import Mapper
-from voxel_Mapper import DenseIndexedMap
+from src.voxel_Mapper import DenseIndexedMap
 from src.utils.datasets import get_dataset
 from src import config
 import os
