@@ -69,11 +69,11 @@ mapping:
   lr_factor: 1
   pixels: 1000
   iters_first: 1500
-  iters: 60
+  iters: 150
   stage:
     coarse:
       decoders_lr: 0.0
-      coarse_lr: 0.001
+      coarse_lr: 0.005
       middle_lr: 0.0
       fine_lr: 0.0
       color_lr: 0.0
@@ -86,15 +86,15 @@ mapping:
     fine:
       decoders_lr: 0.0
       coarse_lr: 0.0
-      middle_lr: 0.005
-      fine_lr: 0.005
+      middle_lr: 0.015
+      fine_lr: 0.015
       color_lr: 0.0
     color:
-      decoders_lr: 0.005
+      decoders_lr: 0.015
       coarse_lr: 0.0
-      middle_lr: 0.005
-      fine_lr: 0.005
-      color_lr: 0.005
+      middle_lr: 0.015
+      fine_lr: 0.015
+      color_lr: 0.015
 cam:
   H: 680
   W: 1200
