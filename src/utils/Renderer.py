@@ -19,7 +19,6 @@ class Renderer(object):
 
         self.H, self.W, self.fx, self.fy, self.cx, self.cy = slam.H, slam.W, slam.fx, slam.fy, slam.cx, slam.cy
 
-    # SWITCH: Switch output of this function
     def eval_points(self, p, decoders, dense_map_dict=None, stage='color', device='cuda:0'):
         """
         Evaluates the occupancy and/or color value for the points.
@@ -179,8 +178,6 @@ class Renderer(object):
             z_vals[..., :, None]  # [N_rays, N_samples+N_surface, 3]
         pointsf = pts.reshape(-1, 3)
 
-        # DONE: Changed eval_points function
-        # Passes grid to decoders, check decoders.
         raw = self.eval_points(pointsf, decoders, dense_map_dict, stage, device)
         raw = raw.reshape(N_rays, N_samples+N_surface, -1)
 

@@ -195,7 +195,6 @@ class Tracker(object):
             if idx == 0 or self.gt_camera:
                 c2w = gt_c2w
                 if not self.no_vis_on_first_frame:
-                    # DONE: Change visualizer
                     self.visualizer.vis(
                         idx, 0, gt_depth, gt_color, c2w, self.dense_map_dict_copy, self.decoders)
 
@@ -238,7 +237,6 @@ class Tracker(object):
                     if self.seperate_LR:
                         camera_tensor = torch.cat([quad, T], 0).to(self.device)
 
-                    # DONE: Change visualizer
                     self.visualizer.vis(
                         idx, cam_iter, gt_depth, gt_color, camera_tensor, self.dense_map_dict_copy, self.decoders)
 

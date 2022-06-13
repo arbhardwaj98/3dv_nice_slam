@@ -36,9 +36,8 @@ class DenseIndexedMap:
         :param name:  name
         :param cfg:  config
         :param bound:  map bounds
+        :param shape: shape of the voxel grid
         """
-        # mp.set_start_method('spawn', force=True)
-        # mp.set_start_method('forkserver', force=True)
         self.cfg = cfg
         device = cfg["mapping"]["device"]
         self.device = device
@@ -66,7 +65,6 @@ class DenseIndexedMap:
         # Directly modifiable from outside.
         self.extract_mesh_std_range = None
 
-        # TODO: Make this 27 instead of 6
         self.mesh_update_affected = [torch.tensor([t], device=self.device)
                                      for t in [[-1, 0, 0], [1, 0, 0],
                                                [0, -1, 0], [0, 1, 0],
@@ -92,16 +90,11 @@ class DenseIndexedMap:
                 self.cold_vars[key].share_memory_()
         self.backup_var_names = ["indexer", "latent_vecs", "latent_vecs_pos", "voxel_obs_count"]
         self.backup_vars = {}
-        # Allow direct visit by variable
-        # self.modifying_lock = threading.Lock()
         for p in self.cold_vars.keys():
             setattr(DenseIndexedMap, p, property(
                 fget=functools.partial(DenseIndexedMap._get_var, name=p),
                 fset=functools.partial(DenseIndexedMap._set_var, name=p)
             ))
-
-    # def __del__(self):
-    #     self.optimize_process.kill()
 
     def save(self, path, key):
         if not isinstance(path, Path):
@@ -123,28 +116,6 @@ class DenseIndexedMap:
 
     def _inflate_latent_buffer(self, count: int):
         target_n_occupied = self.cold_vars['n_occupied'] + count
-        '''if self.cold_vars['latent_vecs'].size(0) < target_n_occupied:
-            new_size = self.cold_vars['latent_vecs'].size(0)
-            while new_size < target_n_occupied:
-                new_size *= 2
-            new_vec = torch.empty((new_size, self.latent_dim), dtype=torch.float32, device=self.device).share_memory_()
-            new_vec[:self.cold_vars['latent_vecs'].size(0)] = self.cold_vars['latent_vecs']
-            new_vec_pos = torch.ones((new_size,), dtype=torch.long, device=self.device).share_memory_() * -1
-            new_vec_pos[:self.cold_vars['latent_vecs'].size(0)] = self.cold_vars['latent_vecs_pos']
-            new_voxel_conf = torch.zeros((new_size,), dtype=torch.float32, device=self.device).share_memory_()
-            new_voxel_conf[:self.cold_vars['latent_vecs'].size(0)] = self.cold_vars['voxel_obs_count']
-            new_voxel_optim = torch.zeros((new_size,), dtype=torch.bool, device=self.device).share_memory_()
-            new_voxel_optim[:self.cold_vars['latent_vecs'].size(0)] = self.cold_vars['voxel_optimized']
-            new_vec[self.cold_vars['latent_vecs'].size(0):].zero_()
-            self.cold_vars['latent_vecs'] = new_vec.share_memory_()
-            self.cold_vars['latent_vecs_pos'] = new_vec_pos.share_memory_()
-            self.cold_vars['voxel_obs_count'] = new_voxel_conf.share_memory_()
-            self.cold_vars['voxel_optimized'] = new_voxel_optim.share_memory_()
-            self.cold_vars['latent_vecs'].share_memory_()
-            self.cold_vars['latent_vecs_pos'].share_memory_()
-            self.cold_vars['voxel_obs_count'].share_memory_()
-            self.cold_vars['voxel_optimized'].share_memory_()'''
-
         new_inds = torch.arange(self.cold_vars['n_occupied'], target_n_occupied, device=self.device, dtype=torch.long).share_memory_()
         self.cold_vars['n_occupied'] = target_n_occupied
         return new_inds
@@ -196,13 +167,6 @@ class DenseIndexedMap:
         :return:
         """
         surface_xyz = surface_xyz.to(self.device)
-        # assert surface_xyz.device == self.device, \
-        #    f"Device of map {self.device} and input observation " \
-        #    f"{surface_xyz.device} must be the same."
-
-        # This lock prevents meshing thread reading error.
-        # self.modifying_lock.acquire()
-
         # -- 1. Allocate new voxels --
         surface_xyz_zeroed = surface_xyz - self.bound_min.unsqueeze(0)
         surface_xyz_normalized = surface_xyz_zeroed / self.voxel_size
@@ -277,20 +241,35 @@ class DenseIndexedMap:
         return point_embeddings
 
     def interpolate_point(self, xyz):
-
+        """
+        Outputs point encodings using tri-linear interpolation from stored voxel encodings
+        :param xyz: points (N, 3)
+        :return out: interpolated encodings (M, 3). Returned only for points which lie
+                     inside initialized voxels and map bounds
+        :return mask: mask denoting returned points encodings (N, )
+        """
+        # Mask out points outside map bounds
         mask_x = (xyz[:, 0] < self.bound[0][1]) & (xyz[:, 0] > self.bound[0][0])
         mask_y = (xyz[:, 1] < self.bound[1][1]) & (xyz[:, 1] > self.bound[1][0])
         mask_z = (xyz[:, 2] < self.bound[2][1]) & (xyz[:, 2] > self.bound[2][0])
         mask = mask_x & mask_y & mask_z
 
+        # Interpolate points
         out, voxel_mask = self.interpolate_bounded_point(xyz[mask])
 
+        # Combine masks for map bounds and voxels
         mask_combined = torch.zeros(xyz.shape[0], dtype=bool).to(mask.device)
         mask_combined[mask] = mask[mask] & voxel_mask
         return out, mask_combined
 
     def interpolate_bounded_point(self, xyz):
-
+        """
+        Trilinearly interpolates points
+        :param xyz: points (N, 3)
+        :return out: interpolated encodings (M, 3). Returned only for points which lie
+                     inside initialized voxels
+        :return mask: mask denoting returned points encodings (N, )
+        """
         xyz_normalized = (xyz - self.bound_min.unsqueeze(0)) / self.voxel_size
         xyz_normalized = xyz_normalized
 

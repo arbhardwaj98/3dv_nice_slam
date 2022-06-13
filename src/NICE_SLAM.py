@@ -80,6 +80,7 @@ class NICE_SLAM():
         self.mapping_idx.share_memory_()
         self.mapping_cnt = torch.zeros((1)).int()  # counter for mapping
         self.mapping_cnt.share_memory_()
+        # Store dense map tensors in shared memory
         for key, val in self.dense_map_dict.items():
             for key2, val2 in val.cold_vars.items():
                 if isinstance(val2, torch.Tensor):
@@ -194,9 +195,7 @@ class NICE_SLAM():
         """
         Initialize the hierarchical feature grids.
         c_dim = 32, representation encoding dimension
-        num_A_grids = number of grid cells along A axis in the map
-        Creates vectors of size (1, c_dim, num_Z_grids, num_Y_grids, num_X_grids)
-        1 each for fine, mid, coarse, color
+        Creates dense maps each for fine, mid, coarse, color
 
         Args:
             cfg (dict): parsed config dict.
@@ -311,6 +310,7 @@ class NICE_SLAM():
         for p in processes:
             p.join()
 
+        # Save dense maps
         if not os.path.exists(f"output/{self.dataset}/"):
             os.mkdir(f"output/{self.dataset}/")
         for key in self.dense_map_dict.keys():

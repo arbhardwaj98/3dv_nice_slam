@@ -275,7 +275,6 @@ class Mesher(object):
         faces = np.array(mesh.triangles)
         return_mesh = trimesh.Trimesh(vertices=points, faces=faces)
         return return_mesh
-        # SWITCH: Switch output of this function
 
     def eval_points(self, p, decoders, dense_map_dict=None, stage='color', device='cuda:0'):
         """
@@ -428,7 +427,6 @@ class Mesher(object):
                 z = []
                 mask = []
                 for i, pnts in enumerate(torch.split(points, self.points_batch_size, dim=0)):
-                    # mask.append(np.full(pnts.cpu().numpy().shape[0], True))
                     mask.append(mesh_bound.contains(pnts.cpu().numpy()))
                 mask = np.concatenate(mask, axis=0)
                 for i, pnts in enumerate(torch.split(points, self.points_batch_size, dim=0)):

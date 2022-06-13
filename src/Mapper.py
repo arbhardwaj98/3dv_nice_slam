@@ -482,7 +482,6 @@ class Mapper(object):
 
             if self.nice:
                 # should pre-filter those out of bounding box depth value
-                # Does this filter out rays which lie outside our defined map size?
                 with torch.no_grad():
                     det_rays_o = batch_rays_o.clone().detach().unsqueeze(-1)  # (N, 3, 1)
                     det_rays_d = batch_rays_d.clone().detach().unsqueeze(-1)  # (N, 3, 1)
@@ -494,8 +493,6 @@ class Mapper(object):
                 batch_gt_depth = batch_gt_depth[inside_mask]
                 batch_gt_color = batch_gt_color[inside_mask]
 
-            # DONE: read and edit renderer function, it requires the map.
-            #  The function where the depth calculations are done. Important
             ret = self.renderer.render_batch_ray(dense_map_dict, self.decoders, batch_rays_d,
                                                  batch_rays_o, device, self.stage,
                                                  gt_depth=None if self.coarse_mapper else batch_gt_depth)
@@ -512,7 +509,6 @@ class Mapper(object):
             # for imap*, it use volume density
             regulation = (not self.occupancy)
             if regulation:
-                # DONE: read and edit renderer function, it requires the map.
                 point_sigma = self.renderer.regulation(
                     dense_map_dict, self.decoders, batch_rays_d, batch_rays_o, batch_gt_depth, device, self.stage)
                 regulation_loss = torch.abs(point_sigma).sum()
@@ -570,10 +566,12 @@ class Mapper(object):
 
         cur_c2w = self.estimate_c2w_list[idx].to(self.device)
 
+        # Get point cloud from depth image and current camera pose estimate
         cur_pc = get_pointcloud(
             self.H, self.W, self.fx, self.fy, self.cx, self.cy,
             cur_c2w.clone(), gt_depth, self.device)
 
+        # Initialize new voxels for the current point cloud
         for key in self.dense_map_dict.keys():
             if not self.coarse_mapper and "coarse" not in key:
                 self.dense_map_dict[key].integrate_keyframe(cur_pc, key)
@@ -633,10 +631,12 @@ class Mapper(object):
 
             cur_c2w = self.estimate_c2w_list[idx].to(self.device)
 
+            # Get point cloud from depth image and current camera pose estimate
             cur_pc = get_pointcloud(
                 self.H, self.W, self.fx, self.fy, self.cx, self.cy,
                 cur_c2w.clone(), gt_depth, self.device)
 
+            # Initialize new voxels for the current point cloud
             for key in self.dense_map_dict.keys():
                 if not self.coarse_mapper and "coarse" not in key:
                     self.dense_map_dict[key].integrate_keyframe(cur_pc, key)
@@ -649,8 +649,6 @@ class Mapper(object):
                 self.BA = (len(self.keyframe_list) > 4) and cfg['mapping']['BA'] and (
                     not self.coarse_mapper)
 
-                # DONE: Changed optimization function
-                # Map optimization function, lots of changes here
                 _ = self.optimize_map(num_joint_iters, lr_factor, idx, gt_color, gt_depth,
                                       gt_c2w, self.keyframe_dict, self.keyframe_list, cur_c2w=cur_c2w)
                 if self.BA:
@@ -662,7 +660,6 @@ class Mapper(object):
                     if (idx % self.keyframe_every == 0 or (idx == self.n_img - 2)) \
                             and (idx not in self.keyframe_list):
                         self.keyframe_list.append(idx)
-                        # Keyframes are added here, new voxels should be initialized here using the keyframe
                         self.keyframe_dict.append({'gt_c2w': gt_c2w.cpu(), 'idx': idx, 'color': gt_color.cpu(
                         ), 'depth': gt_depth.cpu(), 'est_c2w': cur_c2w.clone()})
 
@@ -683,7 +680,6 @@ class Mapper(object):
                 self.mapping_idx[0] = idx
                 self.mapping_cnt[0] += 1
 
-                # DONE: map as argument
                 if (idx % self.mesh_freq == 0) and (not (idx == 0 and self.no_mesh_on_first_frame)):
                     mesh_out_file = f'{self.output}/mesh/{idx:05d}_mesh.ply'
                     self.mesher.get_mesh(mesh_out_file, self.dense_map_dict, self.decoders, self.keyframe_dict,

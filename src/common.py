@@ -272,7 +272,9 @@ def get_rays(H, W, fx, fy, cx, cy, c2w, device):
 
 def get_pointcloud(H, W, fx, fy, cx, cy, c2w, depth, device):
     """
-    Get pointcloud for a whole depth image.
+    Get pointcloud for a whole depth image. Filters out
+    pixels which have no depth information
+    returns: point cloud (N, 3)
 
     """
     if isinstance(c2w, np.ndarray):
