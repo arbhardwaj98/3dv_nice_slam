@@ -311,6 +311,8 @@ class NICE_SLAM():
         for p in processes:
             p.join()
 
+        if not os.path.exists(f"output/{self.dataset}/"):
+            os.mkdir(f"output/{self.dataset}/")
         for key in self.dense_map_dict.keys():
             self.dense_map_dict[key].save(f"output/{self.dataset}/{key}_dense_map_dict.pt", key)
 

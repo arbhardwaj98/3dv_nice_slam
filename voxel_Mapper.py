@@ -107,12 +107,6 @@ class DenseIndexedMap:
         if not isinstance(path, Path):
             path = Path(path)
         with path.open('wb') as f:
-            with open("replica.txt", "a+") as file_object:
-                file_object.seek(0)
-                data = file_object.read(100)
-                if len(data) > 0 :
-                    file_object.write("\n")
-                file_object.write('bbbbb' + str(key) + str(torch.sum(self.cold_vars['indexer']!=-1)))
             torch.save(torch.sum(self.cold_vars['indexer']!=-1), f)
 
     def load(self, path):
@@ -181,13 +175,6 @@ class DenseIndexedMap:
         new_id = self._inflate_latent_buffer(idx.size(0))
         self.cold_vars['latent_vecs_pos'][new_id] = idx
         self.cold_vars['indexer'][idx] = new_id
-
-        with open("replica.txt", "a+") as file_object:
-            file_object.seek(0)
-            data = file_object.read(100)
-            if len(data) > 0 :
-                file_object.write("\n")
-            file_object.write('aaaaa'+ str(key)+ str(torch.sum(self.cold_vars['indexer']!=-1)))
 
         # torch.save(torch.sum(self.cold_vars['indexer']!=-1), 'output/Replica/'+key+'_'+str(self.store_idx)+'.pt')
         

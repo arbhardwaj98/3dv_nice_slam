@@ -24,7 +24,7 @@ mapping:
   mapping_window_size: 10
   pixels: 1000
   iters_first: 400
-  iters: 10
+  iters: 25
   bound: [[0.0,6.5],[0.0,4.0],[0,3.5]]
   marching_cubes_bound: [[0.0,6.5],[0.0,4.0],[0,3.5]]
 cam: 
